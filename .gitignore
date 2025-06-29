@@ -1,0 +1,37 @@
+# 虚拟环境
+venv/
+.venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# IDE 和操作系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 敏感信息
+.env
+api_key.txt
+*.log
+*.swp
+
+# 生成的目录和文件
+output/
+temp/
+temp_segments/
+logs/
+dist/
+build/
+*.egg-info
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.tox/
+
+# 其他不应上传的文件
+SmartProposal Engine 商业化方案.docx
+bundle_project.py
+gemini_project_bundle.txt
