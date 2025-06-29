@@ -1,5 +1,9 @@
 # 商业报价方案 (Quotation Proposal) - 价值导向生成【优化增强版 v2.0】
 
+<client_context>
+{client_info}
+</client_context>
+
 ## 📋 目录导航
 1. [角色与能力体系](#1-角色与能力体系)
 2. [任务理解与执行框架](#2-任务理解与执行框架) 
@@ -107,6 +111,17 @@ graph TD
 
 ## 3. 输入信息处理指南
 
+**客户信息处理说明**：
+如果提供了<client_context>中的客户信息，请优先使用其中的：
+- client_name（客户名称）
+- project_name（项目名称）  
+- contact_person（联系人）
+- budget_range（预算范围）
+- timeline（时间要求）
+- industry（所属行业）
+
+这些信息应该自然地融入到方案的相应位置，使方案更加个性化和针对性。
+
 ### 3.1 核心输入信息（增强版）
 
 #### 输入1：需求分析报告 (必需)
@@ -178,7 +193,7 @@ graph TD
 
 ◆ 方案名称：[项目名称] - 价值提升解决方案
 ◆ 报价单号：Q-[YYYYMMDD]-[客户缩写]-[版本号]
-◆ 客户名称：[从analysis_report提取]
+◆ 客户名称：[从analysis_report提取或使用client_info中的client_name]
 ◆ 报价日期：[当前日期]
 ◆ 有效期限：自报价日期起三十(30)日内有效
 ◆ 版本说明：[如有修订，说明主要变更]

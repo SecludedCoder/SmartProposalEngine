@@ -45,6 +45,8 @@
 {transcript}
 ```
 
+{additional_context}
+
 ---
 
 ## 2. 会议信息提取方法论
