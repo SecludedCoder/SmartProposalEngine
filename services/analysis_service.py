@@ -5,7 +5,7 @@
 功能说明: 深度分析服务模块，负责对转录文本进行商业洞察分析
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
+最后修改: 2025-06-29
 版本: 1.0.0
 """
 
@@ -16,6 +16,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from datetime import datetime
 from pathlib import Path
 
+# 【新增】导入streamlit库以访问session_state
+import streamlit as st
 import google.generativeai as genai
 
 # 添加项目根目录到系统路径
@@ -73,7 +75,8 @@ class DeepAnalysisService(BaseService):
     def __init__(self):
         super().__init__()
         self.prompt_manager = PromptManager()
-        self.model_interface = ModelInterface()
+        # 【修改】不再创建新的ModelInterface实例，而是从session_state获取共享的实例
+        self.model_interface = st.session_state.get("model_interface")
 
     def get_available_templates(self) -> List[str]:
         """获取可用的分析模板列表"""
@@ -126,6 +129,18 @@ class DeepAnalysisService(BaseService):
         start_time = time.time()
         options = options or {}
         progress_callback = options.get('progress_callback')
+
+        # 【新增】在处理开始时，再次确认model_interface实例存在且已初始化
+        if not self.model_interface or not self.model_interface.is_initialized:
+            return ProcessingResult(
+                content='',
+                metadata={'error': "Model interface not properly initialized."},
+                source_type='analysis',
+                processing_time=time.time() - start_time,
+                model_used='',
+                tokens_consumed={},
+                error="模型接口未初始化。请返回主页设置API Key。"
+            )
 
         try:
             # 提取文本内容

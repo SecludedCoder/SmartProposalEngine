@@ -23,6 +23,9 @@ from typing import Dict, List, Optional, Tuple, Union, Literal
 from dataclasses import dataclass
 from pathlib import Path
 
+# 【新增】导入streamlit库以访问session_state
+import streamlit as st
+
 # 添加项目根目录到系统路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -287,7 +290,8 @@ class TranscriptionService(BaseService):
         self.text_optimizer = None
         self.speaker_analyzer = None
         self.prompt_manager = PromptManager()
-        self.model_interface = ModelInterface()
+        # 【修改】不再创建新的ModelInterface实例，而是从session_state获取共享的实例
+        self.model_interface = st.session_state.get("model_interface")
         self.temp_folder = "temp_segments"
         self.max_retries = 3
         self.delete_uploaded_files = True
@@ -313,6 +317,18 @@ class TranscriptionService(BaseService):
         enable_text_optimization = options.get('enable_text_optimization', False)
         mode = options.get('mode', 'standard')
         progress_callback = options.get('progress_callback', None)
+
+        # 【新增】在处理开始时，再次确认model_interface实例存在且已初始化
+        if not self.model_interface or not self.model_interface.is_initialized:
+            return ProcessingResult(
+                content='',
+                metadata={'error': "Model interface not properly initialized."},
+                source_type='audio',
+                processing_time=time.time() - start_time,
+                model_used='',
+                tokens_consumed={},
+                error="模型接口未初始化。请返回主页设置API Key。"
+            )
 
         try:
             if isinstance(input_data, (bytes, str)) and not os.path.exists(str(input_data)):
@@ -340,8 +356,8 @@ class TranscriptionService(BaseService):
                              'duration': format_duration(duration_seconds) if duration_seconds else '未知',
                              'processing_mode': mode, 'enable_text_optimization': enable_text_optimization})
 
-            if transcribed_text and enable_speaker_diarization:
-                speakers = self.speaker_analyzer.extract_speakers(transcribed_text) if self.speaker_analyzer else []
+            if transcribed_text and enable_speaker_diarization and self.speaker_analyzer:
+                speakers = self.speaker_analyzer.extract_speakers(transcribed_text)
                 metadata['speakers_count'] = len(speakers);
                 metadata['speakers'] = sorted(speakers)
 
@@ -378,20 +394,19 @@ class TranscriptionService(BaseService):
                 transcribed_text, tokens = self._transcribe_single_segment(segments_info[0][0],
                                                                            enable_speaker_diarization,
                                                                            progress_callback)
-                total_input_tokens += tokens['input']
-                total_output_tokens += tokens['output']
+                total_input_tokens += tokens.get('input', 0)
+                total_output_tokens += tokens.get('output', 0)
             else:
                 transcription_segments = []
                 for i, (segment_path, start_time, end_time) in enumerate(segments_info):
                     if progress_callback: progress_callback(f"正在处理片段 {i + 1}/{len(segments_info)}...")
                     segment_text, tokens = self._transcribe_single_segment(segment_path, enable_speaker_diarization,
                                                                            progress_callback)
-                    total_input_tokens += tokens['input']
-                    total_output_tokens += tokens['output']
-                    if segment_text:
+                    total_input_tokens += tokens.get('input', 0)
+                    total_output_tokens += tokens.get('output', 0)
+                    if segment_text and self.speaker_analyzer:
                         segment = TranscriptionSegment(i, start_time, end_time, segment_text,
-                                                       self.speaker_analyzer.extract_speakers(
-                                                           segment_text) if self.speaker_analyzer else [],
+                                                       self.speaker_analyzer.extract_speakers(segment_text),
                                                        f"seg{i:03d}")
                         transcription_segments.append(segment)
                     if i < len(segments_info) - 1: time.sleep(3)
@@ -401,8 +416,8 @@ class TranscriptionService(BaseService):
         else:
             transcribed_text, tokens = self._transcribe_single_segment(file_path, enable_speaker_diarization,
                                                                        progress_callback)
-            total_input_tokens += tokens['input']
-            total_output_tokens += tokens['output']
+            total_input_tokens += tokens.get('input', 0)
+            total_output_tokens += tokens.get('output', 0)
 
         original_text = transcribed_text
         if enable_text_optimization and self.text_optimizer and transcribed_text:
@@ -500,6 +515,11 @@ class TranscriptionService(BaseService):
     def process_web_text(self, text: str, options: Optional[Dict] = None) -> ProcessingResult:
         start_time = time.time()
         options = options or {}
+
+        # 【新增】确保model_interface实例存在
+        if not self.model_interface:
+            self.model_interface = st.session_state.get('model_interface')
+
         try:
             if options.get('enable_text_optimization', False):
                 if not self.text_optimizer:
