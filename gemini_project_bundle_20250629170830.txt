@@ -1,3 +1,29 @@
+请全面深入分析以下项目汇总代码
+本次任务重点：
+分析prompts目录中各prompt模板和代码是否适配。
+由于之前我们做了prompt模板优化和扩充，因此需要再次检查。
+请注意检查重点
+1. 从程序运行角度分析代码和prompt模板是否适配
+例如，有些内容是程序运行过程中动态生成的，然后注入到prompt模板中，合并成一个完整的prompt送给LLM
+这是检查重点，请看看这个动态注入是否正确，准确无误
+
+2. 请确认目前prompts中的prompt模板文件，是否会被动态加载（简单讲，是否确实影响运行）
+
+3. 请务必注意，务必注意，本次“不检查”prompt模板是否合适，这个不重要，本次是程序执行正确性检查
+
+希望能正确加载相应的prompt模板，然后动态内容可以准确注入，构建成完整的prompt送给LLM具体执行
+
+目前一共9各prompt模板文件，逐个分析确认。
+
+你应该全面深入分析检查，
+1. 确认本次的prompt模板，在具体哪些代码文件中被用到
+2. 确认是否动态加载确实有效
+3. 确认其中动态信息注入拼装是否正确
+4. 其它你认为需要检查的内容
+
+每次只检查一个prompt模板，本次检查[business_negotiation.md]
+
+
 ================================================================================
 # ==============================================================================
 # Project Code Bundle for LLM Context
@@ -18,7 +44,7 @@
 # Please use this content as a reference for understanding the project.
 #
 # Script Version: 1.3.0
-# Generation Time: 2025-06-29 14:46:55 
+# Generation Time: 2025-06-29 17:08:30 
 # ==============================================================================
 
 # Full Project Structure (Scan Results - Respects EXCLUDE_DIRS):
@@ -41,7 +67,6 @@
 │   └── qwen_provider.py
 ├── output/
 ├── pages/
-│   ├── 0_🔑_Configuration.py
 │   ├── 1_📄_Input_Processing.py
 │   ├── 2_🔍_Deep_Analysis.py
 │   ├── 3_📋_Proposal_Generation.py
@@ -105,7 +130,6 @@
 │   ├── gemini_provider.py
 │   └── qwen_provider.py
 ├── pages/
-│   ├── 0_🔑_Configuration.py
 │   ├── 1_📄_Input_Processing.py
 │   ├── 2_🔍_Deep_Analysis.py
 │   ├── 3_📋_Proposal_Generation.py
@@ -1154,9 +1178,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 【修改】导入新的Provider类，不再直接导入任何具体SDK
-from .llm_providers.base_provider import BaseProvider
-from .llm_providers.gemini_provider import GeminiProvider
-from .llm_providers.qwen_provider import QwenProvider
+from llm_providers.base_provider import BaseProvider
+from llm_providers.gemini_provider import GeminiProvider
+from llm_providers.qwen_provider import QwenProvider
 
 
 class ModelConfig:
@@ -2937,7 +2961,7 @@ __all__ = [
 
 --- File: llm_providers/base_provider.py ---
 # ==============================================================================
-# File: core/llm_providers/base_provider.py (新增文件)
+# File: core/llm_providers/base_provider.py (修改后)
 # ==============================================================================
 # !/usr/bin/env python
 # -*- coding: utf-8 -*-
@@ -2948,11 +2972,11 @@ __all__ = [
           都遵循统一的方法签名和行为规范，从而使得ModelInterface可以无缝切换和调度。
 作者: SmartProposal Team
 创建日期: 2025-06-29
-版本: 1.0.0
+版本: 1.1.0
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple, Union, Any, Generator
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 
 class BaseProvider(ABC):
@@ -3048,54 +3072,71 @@ class BaseProvider(ABC):
         """
         pass
 
+    # --- 新增文件处理相关抽象方法 ---
+
+    @abstractmethod
+    def upload_file(self, file_path: str) -> Any:
+        """
+        上传文件（主要用于音频/视频等多模态输入）。
+
+        Args:
+            file_path (str): 本地文件的路径。
+
+        Returns:
+            Any: 返回一个代表已上传文件的对象或标识符。
+        """
+        pass
+
+    @abstractmethod
+    def get_file_state(self, file_object: Any) -> str:
+        """
+        获取已上传文件的状态。
+
+        Args:
+            file_object (Any): `upload_file` 返回的文件对象。
+
+        Returns:
+            str: 文件的状态字符串 (例如 "PROCESSING", "ACTIVE", "FAILED")。
+        """
+        pass
+
+    @abstractmethod
+    def delete_file(self, file_object: Any) -> None:
+        """
+        删除已上传的文件。
+
+        Args:
+            file_object (Any): `upload_file` 返回的文件对象。
+        """
+        pass
+
     def health_check(self) -> Dict[str, Any]:
         """
         对提供商服务进行健康检查。
         子类可以重写此方法以提供更详细的检查。
         """
         if not self.is_initialized:
-            return {
-                'status': 'unhealthy',
-                'reason': 'Provider not initialized.'
-            }
-
-        # 默认的健康检查逻辑（子类可以扩展）
-        # 尝试使用一个非常简短的、低成本的调用来验证API Key和连接性
+            return {'status': 'unhealthy', 'reason': 'Provider not initialized.'}
         try:
-            # 这里可以放一个简单的测试调用，但为了避免不必要的开销，
-            # 基础实现仅检查初始化状态。
-            # 具体的API调用测试可以在子类中实现。
-            return {
-                'status': 'healthy',
-                'reason': 'Provider is initialized.'
-            }
+            return {'status': 'healthy', 'reason': 'Provider is initialized.'}
         except Exception as e:
-            return {
-                'status': 'unhealthy',
-                'reason': f'Health check failed: {str(e)}'
-            }
+            return {'status': 'unhealthy', 'reason': f'Health check failed: {str(e)}'}
 
 
-# 这个文件定义的是抽象类，不应该被直接运行。
-# if __name__ == "__main__" 块用于说明此文件的用途。
 if __name__ == "__main__":
     print("这是一个抽象基类文件，不应直接运行。")
-    print("请创建具体的提供商类（如 GeminiProvider, QwenProvider）并继承自 BaseProvider。")
 
 --- File: llm_providers/gemini_provider.py ---
-# ==============================================================================
-# File: core/llm_providers/gemini_provider.py (新增文件)
-# ==============================================================================
-# !/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 文件路径: smart_proposal_engine/core/llm_providers/gemini_provider.py
 功能说明: 实现了针对Google Gemini模型的具体Provider。
           该类封装了所有与Gemini API交互的细节，包括初始化、内容生成、
-          流式处理、Token计算以及错误处理和重试逻辑。
+          流式处理、Token计算、文件处理以及错误处理和重试逻辑。
 作者: SmartProposal Team
 创建日期: 2025-06-29
-版本: 1.0.0
+版本: 1.1.1
 """
 
 import os
@@ -3109,7 +3150,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import google.generativeai as genai
 except ImportError:
-    # 友好提示，避免在未安装依赖时程序崩溃
     raise ImportError(
         "Google Gemini的依赖库 'google-generativeai' 未安装。"
         "请运行 'pip install google-generativeai' 进行安装。"
@@ -3121,6 +3161,9 @@ from .base_provider import BaseProvider
 class GeminiProvider(BaseProvider):
     """
     针对Google Gemini模型的LLM Provider实现。
+
+    注意：文件相关方法使用 Any 类型，因为 google.generativeai 的 File 类型
+    导入路径可能因版本而异。实际使用时会返回 genai.upload_file() 的结果。
     """
 
     def __init__(self, api_key: str, max_retries: int = 3):
@@ -3262,7 +3305,10 @@ class GeminiProvider(BaseProvider):
             )
 
             complete_response = ""
+            # 先收集所有响应块
+            chunks = []
             for chunk in response_stream:
+                chunks.append(chunk)
                 if chunk.text:
                     complete_response += chunk.text
                     if callback:
@@ -3271,13 +3317,20 @@ class GeminiProvider(BaseProvider):
                         except Exception as cb_e:
                             print(f"流式回调函数执行出错: {cb_e}")
 
-            # 流式传输完成后，从响应对象获取token使用量
-            if hasattr(response_stream, 'usage_metadata'):
-                input_tokens = response_stream.usage_metadata.prompt_token_count
-                output_tokens = response_stream.usage_metadata.candidates_token_count
-            else:
-                input_tokens = self._estimate_tokens(str(prompt))
-                output_tokens = self._estimate_tokens(complete_response)
+            # 流式传输完成后，尝试从最后一个chunk获取token使用量
+            # 或从累积的响应中获取
+            input_tokens = self._estimate_tokens(str(prompt))
+            output_tokens = self._estimate_tokens(complete_response)
+
+            # 尝试从chunks中获取usage_metadata
+            for chunk in reversed(chunks):
+                if hasattr(chunk, 'usage_metadata'):
+                    try:
+                        input_tokens = chunk.usage_metadata.prompt_token_count
+                        output_tokens = chunk.usage_metadata.candidates_token_count
+                        break
+                    except:
+                        pass
 
             stats = {
                 'input_tokens': input_tokens,
@@ -3304,6 +3357,51 @@ class GeminiProvider(BaseProvider):
             print(f"调用Gemini API计算Token失败，使用估算值: {e}")
             return self._estimate_tokens(text)
 
+    def upload_file(self, file_path: str) -> Any:
+        """
+        使用Gemini API上传文件。
+
+        Args:
+            file_path (str): 要上传的文件路径
+
+        Returns:
+            Any: genai.upload_file() 返回的文件对象
+        """
+        if not self.is_initialized:
+            raise RuntimeError("Gemini Provider尚未初始化。")
+        return genai.upload_file(path=file_path)
+
+    def get_file_state(self, file_object: Any) -> str:
+        """
+        获取Gemini上文件的状态。
+
+        Args:
+            file_object: genai.upload_file() 返回的文件对象
+
+        Returns:
+            str: 文件状态字符串
+        """
+        if not self.is_initialized:
+            raise RuntimeError("Gemini Provider尚未初始化。")
+        # 需要重新获取最新的文件对象来检查状态
+        updated_file = genai.get_file(file_object.name)
+        return updated_file.state.name
+
+    def delete_file(self, file_object: Any) -> None:
+        """
+        删除Gemini上的文件。
+
+        Args:
+            file_object: genai.upload_file() 返回的文件对象
+        """
+        if not self.is_initialized:
+            raise RuntimeError("Gemini Provider尚未初始化。")
+        try:
+            genai.delete_file(file_object.name)
+        except Exception as e:
+            # 删除失败通常不是关键性错误，打印警告即可
+            print(f"警告：删除Gemini临时文件 {file_object.name} 失败: {e}")
+
     def _should_retry(self, error_msg: str) -> bool:
         """判断错误是否应该重试"""
         retry_keywords = [
@@ -3315,24 +3413,49 @@ class GeminiProvider(BaseProvider):
         return any(keyword in error_lower for keyword in retry_keywords)
 
     def _estimate_tokens(self, text: Union[str, Any]) -> int:
-        """后备方法：估算文本的token数量"""
+        """
+        后备方法：估算文本的token数量
+
+        使用简单的启发式方法：
+        - 英文：平均每4个字符约1个token
+        - 中文：平均每2个字符约1个token
+        - 混合文本：使用加权平均
+        """
         if not isinstance(text, str):
             text = str(text)
 
-        # 一个更通用的估算方法：平均每个字符约0.3个token
-        return int(len(text) * 0.3) + 1
+        # 简单的中文字符检测
+        chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
+        total_chars = len(text)
+
+        if total_chars == 0:
+            return 1
+
+        # 计算中文字符比例
+        chinese_ratio = chinese_chars / total_chars
+
+        # 根据中英文比例估算tokens
+        if chinese_ratio > 0.5:
+            # 主要是中文
+            return max(1, int(total_chars * 0.5))
+        else:
+            # 主要是英文或混合
+            return max(1, int(total_chars * 0.25))
 
 
-# 模块独立测试代码
 if __name__ == "__main__":
     print("这是一个具体的Provider实现文件，不应直接运行。")
     print("请通过 ModelInterface 来调用。")
 
+    # 可选：添加简单的测试代码来验证文件类型
+    # import google.generativeai as genai
+    # print("可用的genai属性：", [attr for attr in dir(genai) if 'file' in attr.lower()])
+
 --- File: llm_providers/qwen_provider.py ---
 # ==============================================================================
-# File: core/llm_providers/qwen_provider.py (新增文件)
+# File: core/llm_providers/qwen_provider.py (修改后)
 # ==============================================================================
-# !/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 文件路径: smart_proposal_engine/core/llm_providers/qwen_provider.py
@@ -3341,7 +3464,7 @@ if __name__ == "__main__":
           包括初始化、内容生成、流式处理、Token计算以及错误处理。
 作者: SmartProposal Team
 创建日期: 2025-06-29
-版本: 1.0.0
+版本: 1.1.0
 """
 
 import os
@@ -3356,14 +3479,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import dashscope
 except ImportError:
-    # 友好提示，避免在未安装依赖时程序崩溃
     raise ImportError(
         "通义千问的依赖库 'dashscope' 未安装。"
         "请运行 'pip install \"dashscope>=1.16.1\"' 进行安装。"
     )
 
 from .base_provider import BaseProvider
-
 
 class QwenProvider(BaseProvider):
     """
@@ -3402,7 +3523,7 @@ class QwenProvider(BaseProvider):
                  prompt: Union[str, List[Any]],
                  model_name: str,
                  generation_config: Optional[Dict[str, Any]] = None,
-                 safety_settings: Optional[List[Dict[str, Any]]] = None,  # Qwen暂不直接使用此格式的safety_settings
+                 safety_settings: Optional[List[Dict[str, Any]]] = None,
                  request_options: Optional[Dict[str, Any]] = None
                  ) -> Tuple[str, Dict[str, Any]]:
         """
@@ -3410,11 +3531,8 @@ class QwenProvider(BaseProvider):
         """
         if not self.is_initialized:
             raise RuntimeError("Qwen Provider尚未初始化。")
-
-        # Qwen API通常需要一个字符串prompt，我们将列表转换为字符串
         if isinstance(prompt, list):
             prompt = "\n".join(str(p) for p in prompt)
-
         return self._generate_with_retry(
             prompt, model_name, generation_config, request_options, retry_count=0
         )
@@ -3427,10 +3545,8 @@ class QwenProvider(BaseProvider):
                              retry_count: int) -> Tuple[str, Dict[str, Any]]:
         """内部方法，包含重试逻辑的生成实现。"""
         try:
-            # 合并和准备参数
             final_gen_config = generation_config or {}
             timeout = request_options.get('timeout', 600) if request_options else 600
-
             response = dashscope.Generation.call(
                 model=model_name,
                 prompt=prompt,
@@ -3438,7 +3554,6 @@ class QwenProvider(BaseProvider):
                 timeout=timeout,
                 **final_gen_config
             )
-
             if response.status_code == HTTPStatus.OK:
                 response_text = response.output.text
                 stats = {
@@ -3447,9 +3562,7 @@ class QwenProvider(BaseProvider):
                 }
                 return response_text, stats
             else:
-                # API返回非200状态码
                 raise Exception(f"API Error: {response.code} - {response.message}")
-
         except Exception as e:
             error_msg = str(e)
             if retry_count < self.max_retries and self._should_retry(error_msg):
@@ -3459,7 +3572,6 @@ class QwenProvider(BaseProvider):
                 return self._generate_with_retry(
                     prompt, model_name, generation_config, request_options, retry_count + 1
                 )
-            # 重试次数用尽或遇到不可重试错误
             raise Exception(f"模型调用失败: {error_msg}")
 
     def stream_generate(self,
@@ -3473,10 +3585,8 @@ class QwenProvider(BaseProvider):
         """
         if not self.is_initialized:
             raise RuntimeError("Qwen Provider尚未初始化。")
-
         if isinstance(prompt, list):
             prompt = "\n".join(str(p) for p in prompt)
-
         try:
             final_gen_config = generation_config or {}
             response_stream = dashscope.Generation.call(
@@ -3485,16 +3595,13 @@ class QwenProvider(BaseProvider):
                 stream=True,
                 **final_gen_config
             )
-
             complete_response = ""
             last_chunk = None
             for chunk in response_stream:
                 if chunk.status_code == HTTPStatus.OK:
                     partial_text = chunk.output.text
-                    # dashscope流式返回的是累积文本，需要取增量部分
                     new_text = partial_text[len(complete_response):]
                     complete_response = partial_text
-
                     if callback and new_text:
                         try:
                             callback(new_text)
@@ -3503,21 +3610,17 @@ class QwenProvider(BaseProvider):
                     last_chunk = chunk
                 else:
                     raise Exception(f"流式API错误: {chunk.code} - {chunk.message}")
-
             if last_chunk:
                 stats = {
                     'input_tokens': last_chunk.usage.input_tokens,
                     'output_tokens': last_chunk.usage.output_tokens
                 }
             else:
-                # 如果流为空，则估算
                 stats = {
                     'input_tokens': self._estimate_tokens(prompt),
                     'output_tokens': 0
                 }
-
             return complete_response, stats
-
         except Exception as e:
             raise Exception(f"流式生成失败: {str(e)}")
 
@@ -3528,7 +3631,6 @@ class QwenProvider(BaseProvider):
         if not self.is_initialized:
             print("警告: Qwen Provider未初始化，使用估算方法计算token。")
             return self._estimate_tokens(text)
-
         try:
             response = dashscope.Tokenization.call(
                 model=model_name,
@@ -3543,9 +3645,33 @@ class QwenProvider(BaseProvider):
             print(f"调用DashScope API计算Token时发生异常: {e}，使用估算值。")
             return self._estimate_tokens(text)
 
+    # --- 新增文件处理方法的具体实现 ---
+    def upload_file(self, file_path: str) -> Any:
+        """
+        Qwen/DashScope目前不要求预上传文件进行多模态处理，
+        而是直接在调用时传入本地文件路径或URL。
+        因此，此方法直接返回文件路径本身作为“文件对象”。
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"文件不存在: {file_path}")
+        return file_path
+
+    def get_file_state(self, file_object: Any) -> str:
+        """
+        由于Qwen不上传文件，我们假定文件总是可用的。
+        """
+        if isinstance(file_object, str) and os.path.exists(file_object):
+            return "ACTIVE"
+        return "FAILED"
+
+    def delete_file(self, file_object: Any) -> None:
+        """
+        由于Qwen不上传文件到云端，此方法无需执行任何操作。
+        """
+        pass
+
     def _should_retry(self, error_msg: str) -> bool:
         """判断错误是否应该重试"""
-        # DashScope 常见的可重试错误码或信息
         retry_keywords = [
             'throttling', 'qps rate-limit', 'service is unavailable', 'timeout',
             'serviceunavailable', 'systemerror', 'internalservererror',
@@ -3558,16 +3684,11 @@ class QwenProvider(BaseProvider):
         """后备方法：估算文本的token数量"""
         if not isinstance(text, str):
             text = str(text)
-
-        # Qwen的分词对中文更友好，简单估算可以认为1个汉字约等于1个token
         chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
         other_chars = len(text) - chinese_chars
-        # 其他字符（英文、数字、符号）大致按每4个字符1个token估算
         estimated_tokens = chinese_chars + (other_chars // 4)
         return int(estimated_tokens) + 1
 
-
-# 模块独立测试代码
 if __name__ == "__main__":
     print("这是一个具体的Provider实现文件，不应直接运行。")
     print("请通过 ModelInterface 来调用。")
@@ -3608,122 +3729,6 @@ Qwen,qwen-long,Qwen Long (长文本),0.0007,0.0014
 Qwen,qwen-max,Qwen Max (旗舰),0.0167,0.0167
 Qwen,qwen-plus,Qwen Plus (增强),0.0028,0.0028
 Qwen,qwen-turbo,Qwen Turbo (高速),0.0011,0.0011
-
---- File: pages/0_🔑_Configuration.py ---
-# pages/0_🔑_Configuration.py
-
-import streamlit as st
-import configparser
-from pathlib import Path
-import sys
-import os
-
-# 确保能找到核心模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.model_interface import ModelInterface
-
-st.set_page_config(page_title="初始化配置", page_icon="🔑", layout="centered")
-
-st.title("🔑 系统初始化配置")
-st.markdown("在使用前，请先完成API Key和模型的配置。")
-
-# --- Session State 初始化 ---
-if 'app_settings' not in st.session_state:
-    st.session_state.app_settings = {
-        "api_key": "",
-        "model_provider": "Gemini", # 默认提供商
-        "transcription_model": "",
-        "analysis_model": "",
-        "proposal_model": "",
-        "config_completed": False
-    }
-
-# --- 加载模型配置 ---
-# (此处的模型加载逻辑将在第二阶段重构 ModelInterface 后变得更优雅)
-# 暂时用一个简化的方式来演示
-def load_available_models():
-    # 在第二阶段，这里会从 ModelInterface 获取
-    # 假设 models.conf 已经按新格式修改
-    return {
-        "Gemini": ["models/gemini-2.5-flash", "models/gemini-2.5-pro", "models/gemini-1.5-pro-latest"],
-        "Qwen": ["qwen-turbo", "qwen-long"],
-        # ... 其他模型提供商
-    }
-
-available_models = load_available_models()
-model_providers = list(available_models.keys())
-
-# --- 界面表单 ---
-with st.form("config_form"):
-    st.subheader("1. API 配置")
-    api_key = st.text_input(
-        "API Key",
-        type="password",
-        placeholder="请输入您的API Key",
-        help="您的API Key将仅在本次会话中保存，不会被存储到服务器。",
-        value=st.session_state.app_settings.get("api_key", "")
-    )
-
-    st.subheader("2. 模型选择")
-    model_provider = st.selectbox(
-        "选择模型提供商",
-        options=model_providers,
-        index=model_providers.index(st.session_state.app_settings.get("model_provider", "Gemini"))
-    )
-
-    # 根据选择的提供商，动态更新子模型列表
-    sub_models = available_models.get(model_provider, [])
-
-    transcription_model = st.selectbox(
-        "转录模型 (用于音频处理)",
-        options=sub_models,
-        help="推荐使用针对音频优化的模型，如 gemini-2.5-flash"
-    )
-
-    analysis_model = st.selectbox(
-        "分析模型 (用于深度分析)",
-        options=sub_models,
-        help="推荐使用能力更强的模型，如 gemini-2.5-pro"
-    )
-
-    proposal_model = st.selectbox(
-        "方案生成模型 (用于最终输出)",
-        options=sub_models,
-        help="推荐使用能力最强的模型，如 gemini-2.5-pro"
-    )
-
-    submitted = st.form_submit_button("✅ 保存配置", use_container_width=True, type="primary")
-
-# --- 表单提交逻辑 ---
-if submitted:
-    if not api_key:
-        st.error("API Key 不能为空！")
-    else:
-        # 保存配置到 session_state
-        st.session_state.app_settings["api_key"] = api_key
-        st.session_state.app_settings["model_provider"] = model_provider
-        st.session_state.app_settings["transcription_model"] = transcription_model
-        st.session_state.app_settings["analysis_model"] = analysis_model
-        st.session_state.app_settings["proposal_model"] = proposal_model
-        st.session_state.app_settings["config_completed"] = True
-
-        # 真正的初始化在这里发生
-        if 'model_interface' in st.session_state:
-            try:
-                # 使用用户输入的Key和模型选择来配置 ModelInterface
-                model_interface = st.session_state.model_interface
-                model_interface.set_api_key(api_key) # 需要在ModelInterface中新增此方法
-                model_interface.set_model('transcription', transcription_model)
-                model_interface.set_model('analysis', analysis_model)
-                model_interface.set_model('proposal', proposal_model)
-                model_interface.initialize_genai() # 需要在ModelInterface中新增此方法
-                st.session_state.model_initialized = True
-                st.success("配置成功！现在可以使用其他功能了。")
-            except Exception as e:
-                st.session_state.model_initialized = False
-                st.error(f"配置失败，请检查API Key是否正确: {e}")
-        else:
-            st.error("核心模型接口未加载，请刷新页面重试。")
 
 --- File: pages/1_📄_Input_Processing.py ---
 #!/usr/bin/env python
@@ -6895,949 +6900,5543 @@ if __name__ == "__main__":
 --- File: prompts/analysis/__init__.py ---
 
 --- File: prompts/analysis/business_negotiation.md ---
-# 商务谈判要点分析
+# 商务谈判深度分析与战略推演模板 v3.0（优化增强版）
 
-## 一、角色定位
-你是一位资深的商务谈判专家和策略顾问，拥有丰富的谈判经验和敏锐的商业洞察力。你擅长分析谈判动态、识别各方立场、评估利益格局，并制定有效的谈判策略。
+## 1. 角色定位与专业能力
 
-## 二、分析任务
-请对以下商务谈判记录进行深度分析，提取关键信息并提供策略建议：
+### 1.1 角色定义
+你是一位资深的商务谈判战略顾问，拥有15年以上B2B复杂交易谈判经验。你精通谈判理论、行为心理学、跨文化沟通，并具备将非结构化对话转化为结构化战略洞察的卓越能力。
 
-### 谈判内容：
+### 1.2 专业知识储备
+- **谈判理论基础**：精通哈佛谈判项目(Harvard Negotiation Project)、Getting to Yes原则、Chris Voss的战术同理心等主流谈判理论
+- **心理学应用**：掌握认知偏差、锚定效应、框架效应等心理学原理在谈判中的应用
+- **商业洞察**：深谙不同行业的商业模式、价值链分析、竞争态势
+- **跨文化能力**：了解主要商业文化（高语境vs低语境、个人主义vs集体主义等）的谈判风格差异
+- **分析工具掌握**：熟练运用SWOT、Porter's Five Forces、Game Theory等分析框架
+
+### 1.3 工作准则
+- **客观中立**：基于事实进行分析，避免主观臆断
+- **价值导向**：所有分析和建议都以为客户创造最大价值为目标
+- **风险意识**：充分评估潜在风险并提供预防措施
+- **行动导向**：提供具体可执行的建议而非空泛理论
+- **持续优化**：根据谈判进展动态调整策略
+
+### 1.4 核心任务
+将提供的谈判记录转化为包含以下要素的战略分析报告：
+- 多维度的局势评估
+- 深入的参与方心理分析
+- 基于理论的策略建议
+- 可量化的风险评估
+- 具体的行动路线图
+- 为下游AI辅助方案生成提供结构化输入
+
+### 1.5 输入内容
+```text
 {transcript}
+```
 
-## 三、分析维度
+---
 
-### 3.1 谈判概况
-#### 基本信息
-- **谈判主题**：核心议题和谈判目标
-- **参与各方**：各方代表及其角色定位
-- **谈判阶段**：初步接触/深入洽谈/最终谈判
-- **谈判氛围**：合作/对抗/探索性
+## 2. 谈判分析理论框架
 
-#### 背景分析
-- **谈判背景**：促成本次谈判的原因
-- **历史关系**：双方过往合作或接触情况
-- **外部因素**：影响谈判的市场或政策环境
+### 2.1 分析维度说明
+本模板采用"5P+2C"分析框架：
 
-### 3.2 各方立场分析
-#### 我方立场
-- **核心诉求**：必须达成的目标
-- **期望收益**：理想情况下的最佳结果
-- **底线条件**：不可退让的最低要求
-- **可用筹码**：可以用于交换的资源或让步空间
+#### 5P维度
+1. **People（人）**：参与方分析、决策链、个人动机
+2. **Problem（问题）**：核心议题、利益冲突点、共同目标
+3. **Process（流程）**：谈判阶段、时间线、关键节点
+4. **Power（权力）**：谈判筹码、BATNA、影响力分析
+5. **Proposal（方案）**：当前提案、备选方案、创新解决方案
 
-#### 对方立场
-- **表达诉求**：对方明确提出的要求
-- **潜在需求**：未明说但可能存在的需求
-- **压力来源**：对方面临的内外部压力
-- **谈判筹码**：对方拥有的优势或资源
+#### 2C维度
+1. **Context（背景）**：市场环境、行业趋势、历史关系
+2. **Culture（文化）**：组织文化、沟通风格、决策模式
 
-#### 立场对比
-- **共同利益**：双方目标一致的领域
-- **分歧焦点**：主要的争议点
-- **利益交换空间**：可能的妥协或交换方案
+### 2.2 分析原则升级
+1. **证据链原则**：每个分析结论都需要明确的证据支撑
+   - 直接证据：对话中的明确表述 → 标注[直接证据]
+   - 间接证据：基于行为模式的推断 → 标注[间接推断]
+   - 假设推测：基于经验的判断 → 标注[经验假设]
 
-### 3.3 谈判动态分析
-#### 谈判进程
-- **开局策略**：各方的开场方式和初始立场
-- **关键转折**：改变谈判走向的重要时刻
-- **策略调整**：各方策略的变化及原因
+2. **量化优先原则**：
+   - 一级量化：具体数字（金额、百分比、时间）
+   - 二级量化：区间估计（可能范围）
+   - 三级量化：定性转定量（高中低→70%/50%/30%）
 
-#### 沟通模式
-- **话语权分布**：谁主导了谈判节奏
-- **信息披露**：各方信息透露的程度和时机
-- **情绪管理**：情绪变化对谈判的影响
+3. **动态分析原则**：
+   - 识别谈判所处阶段
+   - 预测下一阶段走向
+   - 制定阶段性策略
 
-#### 谈判技巧
-- **使用的策略**：识别各方运用的谈判技巧
-- **效果评估**：这些技巧的实际效果
-- **改进空间**：可以优化的谈判方法
+4. **全局视角原则**：
+   - 单次谈判vs长期关系
+   - 当前交易vs战略布局
+   - 直接利益vs间接价值
 
-### 3.4 条款要点梳理
-#### 已达成共识
-列出双方已经同意的具体条款：
-1. 商务条款（价格、数量、交付等）
-2. 合作条款（合作模式、责任分工等）
-3. 保障条款（质量保证、售后服务等）
+### 2.3 信息处理规范
 
-#### 待商议事项
-需要进一步讨论的要点：
-1. 分歧条款及各方立场
-2. 需要澄清的模糊地带
-3. 需要补充的缺失内容
+#### 信息完整度分级
+- **A级（80-100%）**：核心信息齐全，可进行全面分析
+- **B级（60-79%）**：主要信息具备，部分推断标注
+- **C级（40-59%）**：关键信息缺失，需谨慎分析
+- **D级（<40%）**：信息严重不足，仅提供框架建议
 
-#### 潜在风险条款
-可能带来风险的条款分析：
-1. 风险类型和影响程度
-2. 风险防范建议
-3. 替代方案建议
+#### 信息标注体系
+```
+[直接证据] - 对话中明确提到
+[间接推断] - 基于行为/语言模式推断
+[经验假设] - 基于行业经验的假设
+[待确认] - 关键信息但未明确
+[信息缺失] - 分析所需但完全没有的信息
+[矛盾信息] - 存在冲突需要澄清
+```
 
-### 3.5 谈判策略建议
-#### 整体策略
-- **谈判定位**：我方应采取的总体姿态
-- **节奏控制**：推进谈判的时机和速度
-- **联盟构建**：可以争取的支持力量
+### 2.4 输出控制规范（增强版）
+- **执行摘要**：300-400字（原200-300字，增加洞察深度）
+- **核心分析**：每个维度300-500字
+- **表格规范**：
+  - 核心表格：最多15行（原10行）
+  - 辅助表格：最多10行
+  - 所有表格必须有"数据来源"列
+- **策略建议**：分短中长期，各3-5项
+- **总体长度**：3000-5000字（原2000-3500字）
+- **附件材料**：可选提供谈判准备材料模板
 
-#### 具体策略
-1. **议价策略**
-   - 价格谈判的空间和技巧
-   - 价值塑造和成本分析
-   - 分阶段定价的可能性
+---
 
-2. **让步策略**
-   - 可以让步的条款清单
-   - 让步的时机和条件
-   - 要求的对等回报
+## 3. 输出结构规范（增强版）
 
-3. **施压策略**
-   - 可以施加的压力点
-   - 备选方案的准备
-   - 时间压力的运用
+### 3.1 执行摘要 [必填]
+```markdown
+### 谈判概况
+- **谈判代号**：[便于追踪的唯一标识]
+- **谈判主题**：[一句话说明核心议题]
+- **谈判阶段**：[初步接触/需求探索/方案协商/价格博弈/最终敲定]
+- **关键发现**：
+  1. [最重要的发现，影响谈判方向]
+  2. [次重要发现，影响谈判策略]
+  3. [其他重要发现，影响执行细节]
+- **策略建议**：[2-3句话的核心策略方向]
+- **紧急行动**：[48小时内必须完成的1-2项关键行动]
 
-#### 谈判预案
-- **最佳情况**：理想的谈判结果
-- **可接受情况**：满意的折中方案
-- **最坏情况**：谈判破裂的应对
+### 谈判态势仪表盘
+| 维度 | 当前状态 | 趋势 | 关键指标 | 数据来源 |
+|------|----------|------|----------|----------|
+| 赢单概率 | XX% | ↑/→/↓ | [影响概率的关键因素] | [直接证据/间接推断] |
+| 谈判进展 | X/5阶段 | 快/正常/慢 | [推进的关键里程碑] | [判断依据] |
+| 价格差距 | XX% | 缩小中/扩大中 | [具体差额或比例] | [数据出处] |
+| 时间压力 | 高/中/低 | 增加/稳定/减少 | [关键时间节点] | [信息来源] |
+| 竞争强度 | 1-10分 | 变化趋势 | [主要竞争对手] | [证据类型] |
+| 关系质量 | 1-10分 | 改善/稳定/恶化 | [关系关键事件] | [观察依据] |
+```
 
-### 3.6 后续行动计划
-#### 即期行动（24小时内）
-- 内部汇报和决策
-- 关键信息的核实
-- 紧急材料的准备
+### 3.2 参与方深度分析 [必填]
 
-#### 近期行动（一周内）
-- 方案的完善和优化
-- 团队的协调和准备
-- 下轮谈判的安排
+#### 3.2.1 决策链条图谱
+```markdown
+### 组织决策结构
+我方：
+CEO → [VP Sales] → [销售总监] → [客户经理]
+     ↘ [CFO] → [财务分析]（预算审批）
+     ↘ [CTO] → [技术总监]（技术可行性）
 
-#### 战略考虑
-- 长期合作关系的维护
-- 其他合作机会的挖掘
-- 竞争格局的考量
+对方：
+[最终决策者] → [关键影响者] → [执行层]
+              ↘ [其他相关方]
 
-### 3.7 关键洞察
-- **成功要素**：促成交易的关键因素
-- **主要障碍**：阻碍达成一致的核心问题
-- **破局思路**：创造性的解决方案
+### 关键人物画像
+| 姓名/角色 | 所属方 | 决策角色 | 个人风格 | 核心动机 | 谈判立场 | 影响策略建议 |
+|-----------|--------|----------|----------|----------|----------|--------------|
+| [姓名/头衔] | 我方/对方 | 决策者/影响者/执行者/把关者 | 理性型/关系型/强势型/谨慎型 | [个人KPI/职业发展/风险规避等] | 支持/中立/反对 | [如何影响此人] |
 
-## 四、分析要求
-1. **客观中立**：避免情绪化判断，基于事实分析
-2. **策略思维**：从战略高度思考问题
-3. **务实可行**：建议必须具有可操作性
-4. **风险意识**：充分考虑各种可能性
+### 利益相关方分析矩阵
+| 相关方 | 利益诉求 | 影响力(1-10) | 支持度(-5到+5) | 参与策略 |
+|--------|----------|--------------|----------------|----------|
+| [部门/个人] | [具体利益点] | X分 | +X或-X | 重点争取/保持沟通/降低阻力/暂不考虑 |
+```
+
+#### 3.2.2 心理动态分析
+```markdown
+### 谈判心理状态评估
+- **对方主导情绪**：[信心充足/焦虑观望/防御谨慎/积极进取]
+- **压力来源分析**：
+  - 内部压力：[业绩/预算/时间/上级等]
+  - 外部压力：[竞争/市场/技术更新等]
+- **决策心理锚点**：[对方决策的关键心理依据]
+- **可利用的认知偏差**：
+  - 锚定效应机会：[如何设置有利锚点]
+  - 损失厌恶利用：[如何框架化利益损失]
+  - 社会认同运用：[如何展示其他客户案例]
+```
+
+### 3.3 谈判要素深度分析 [必填]
+
+#### 3.3.1 利益分析升级版
+```markdown
+### 立场vs利益分析
+| 议题 | 我方立场 | 我方深层利益 | 对方立场 | 对方深层利益 | 共创价值机会 |
+|------|----------|--------------|----------|--------------|--------------|
+| 价格 | [表面要求] | [真实考虑] | [表面要求] | [真实考虑] | [双赢可能] |
+| 交期 | [表面要求] | [真实考虑] | [表面要求] | [真实考虑] | [协同方案] |
+| 条款 | [表面要求] | [真实考虑] | [表面要求] | [真实考虑] | [创新思路] |
+
+### 价值创造 vs 价值分配
+- **可扩大的饼**：[哪些方面可以创造更多共同价值]
+- **零和博弈点**：[哪些方面纯粹是利益分配]
+- **转换策略**：[如何将分配问题转化为创造问题]
+```
+
+#### 3.3.2 BATNA深度分析
+```markdown
+### BATNA评估矩阵
+| 评估维度 | 我方BATNA | 对方BATNA | 相对优势分析 |
+|----------|-----------|-----------|--------------|
+| 方案内容 | [具体描述] | [推断描述] | 我方+2/相当/对方+2 |
+| 实施成本 | [金额/资源] | [推断] | 成本优势分析 |
+| 时间成本 | [所需时间] | [推断] | 时间优势分析 |
+| 机会成本 | [放弃什么] | [推断] | 机会成本对比 |
+| 转换成本 | [更换成本] | [推断] | 粘性分析 |
+| 综合评分 | X/10分 | X/10分 | [总体BATNA强弱] |
+
+### BATNA改善策略
+1. **强化我方BATNA**：[具体措施提升备选方案吸引力]
+2. **弱化对方BATNA**：[合法合理降低对方备选方案可行性]
+3. **BATNA信息战**：[如何策略性透露/隐藏BATNA信息]
+```
+
+#### 3.3.3 ZOPA精确计算
+```markdown
+### 多维度ZOPA分析
+| 维度 | 我方底线 | 我方目标 | 对方底线(推测) | 对方目标(推测) | ZOPA区间 | 概率分布 |
+|------|----------|----------|----------------|----------------|-----------|-----------|
+| 总价 | ¥X万 | ¥Y万 | ¥A万 | ¥B万 | ¥[X-B]万 | 正态/偏态 |
+| 付款条件 | X% | Y% | A% | B% | [重叠区间] | 分布类型 |
+| 服务范围 | [最小] | [理想] | [最大可接受] | [期望] | [交集] | 可能性% |
+
+### ZOPA动态变化预测
+- **扩大ZOPA策略**：[如何通过价值创造扩大协议空间]
+- **ZOPA移动因素**：[什么因素会改变双方底线]
+- **时间对ZOPA的影响**：[随时间推移ZOPA如何变化]
+```
+
+### 3.4 谈判策略制定 [必填]
+
+#### 3.4.1 总体战略选择
+```markdown
+### 战略类型决策树
+基于以下分析，推荐采用：[竞争型/合作型/折中型/复合型]
+
+决策依据：
+1. **关系重要性**：[一次性交易 or 长期合作] → 影响合作倾向
+2. **相对实力**：[我强对弱/势均力敌/我弱对强] → 影响竞争可能
+3. **时间压力**：[我方紧急/对方紧急/都不紧急] → 影响策略选择
+4. **BATNA质量**：[我方优/对方优/都一般] → 影响谈判筹码
+5. **价值创造空间**：[大/中/小] → 影响合作必要性
+
+### 阶段性策略规划
+| 谈判阶段 | 主要目标 | 关键策略 | 具体战术 | 成功标志 |
+|----------|----------|----------|----------|----------|
+| 开局阶段 | [建立基调] | [策略选择] | [3-5个具体战术] | [可衡量指标] |
+| 探索阶段 | [信息收集] | [策略选择] | [3-5个具体战术] | [可衡量指标] |
+| 议价阶段 | [价值争取] | [策略选择] | [3-5个具体战术] | [可衡量指标] |
+| 收官阶段 | [达成协议] | [策略选择] | [3-5个具体战术] | [可衡量指标] |
+```
+
+#### 3.4.2 战术工具箱
+```markdown
+### 即时可用战术（24-72小时）
+1. **锚定设置**
+   - 具体做法：[如何设置有利的谈判起点]
+   - 预期效果：[对方可能的心理锚定]
+   - 风险提示：[可能的负面反应]
+
+2. **框架重构**
+   - 当前框架：[对方如何定义问题]
+   - 重构方向：[如何重新定义有利于我方]
+   - 话术建议：["我们可以这样看这个问题..."]
+
+3. **议程控制**
+   - 建议议程：[讨论顺序安排]
+   - 控制要点：[在哪些环节掌握主动]
+   - 时间分配：[各议题时间比例]
+
+### 中期战术部署（1-2周）
+1. **联盟构建**
+   - 潜在盟友：[对方组织内的支持者]
+   - 争取策略：[如何获得支持]
+   - 协同机制：[如何发挥联盟作用]
+
+2. **选择权创造**
+   - 方案设计：[提供3个可选方案]
+   - 心理影响：[选择权对决策的影响]
+   - 引导技巧：[如何引导选择]
+
+### 高级战术储备（必要时使用）
+1. **战略模糊**
+   - 适用场景：[信息不对称时]
+   - 实施方法：[保持某些条款的灵活性]
+   - 退出机制：[何时需要明确]
+
+2. **议题打包/拆分**
+   - 打包逻辑：[哪些议题适合捆绑]
+   - 拆分时机：[何时需要分别讨论]
+   - 交易设计：[如何设计package deal]
+```
+
+#### 3.4.3 沟通脚本建议
+```markdown
+### 关键时刻话术模板
+
+#### 开场定调
+"感谢各位的时间。我相信通过今天的讨论，我们能找到一个让双方都满意的方案。我们的目标是建立长期的合作伙伴关系，而不仅仅是完成这一单交易。"
+
+#### 探索需求
+"能否请您详细说明一下，在这个项目中，什么对您来说是最重要的？除了价格之外，还有哪些因素会影响您的决策？"
+
+#### 价值强调
+"我理解价格是一个重要考虑因素。让我们一起看看这个投资能为贵公司带来的价值：[具体价值点]。根据我们的经验，这通常能带来[X%]的效率提升。"
+
+#### 异议处理
+- 价格异议："我理解您对价格的担忧。让我们一起分析一下总体拥有成本(TCO)..."
+- 时间异议："时间确实很关键。我们可以探讨阶段性交付的可能性..."
+- 功能异议："这是个很好的问题。让我解释一下我们的解决方案如何满足这个需求..."
+
+#### 要求承诺
+"基于我们今天的讨论，您觉得我们离达成合作还有哪些问题需要解决？如果这些问题都得到满意的答案，我们是否可以在[时间]前推进到下一步？"
+```
+
+### 3.5 让步策略与交换清单 [必填]
+```markdown
+### 让步价值评估矩阵
+| 让步项目 | 对我方成本 | 对对方价值 | 交换比率 | 让步顺序 | 触发条件 |
+|----------|------------|------------|-----------|-----------|----------|
+| [付款周期延长] | 低(2/10) | 高(8/10) | 1:4 | 第一批 | 对方price压力大时 |
+| [免费培训] | 中(5/10) | 中(6/10) | 1:1.2 | 第二批 | 需要增加perceived value时 |
+| [价格折扣5%] | 高(8/10) | 高(9/10) | 1:1.1 | 最后 | 其他都用尽时 |
+
+### 交换策略设计
+1. **等价交换原则**
+   - 每个让步必须获得对等或更高价值回报
+   - 记录所有让步以备后续reference
+
+2. **让步节奏控制**
+   - 初期：小让步试探对方诚意
+   - 中期：中等让步推动进展
+   - 后期：关键让步达成协议
+
+3. **创造性交换选项**
+   - 时间换金钱：[具体方案]
+   - 范围换价格：[具体方案]
+   - 风险换收益：[具体方案]
+```
+
+### 3.6 风险评估与预案 [必填]
+```markdown
+### 风险评估矩阵（增强版）
+| 风险类别 | 具体风险 | 概率 | 影响 | 风险值 | 早期信号 | 预防措施 | 应急预案 |
+|----------|----------|------|------|---------|----------|----------|----------|
+| 谈判风险 | 对方中途换人 | 30% | 高 | 9 | 对方暗示人事变动 | 建立多层关系 | 快速重建信任 |
+| 商业风险 | 预算被削减 | 20% | 高 | 6 | 对方财务谨慎度上升 | 分阶段合同 | 调整方案规模 |
+| 竞争风险 | 竞争对手恶意竞价 | 40% | 中 | 6 | 对方频繁提及竞品 | 强化差异化 | 价值再教育 |
+| 执行风险 | 技术实施延期 | 25% | 中 | 5 | 技术团队资源紧张 | 预留缓冲时间 | 外部资源补充 |
+| 关系风险 | 信任危机 | 15% | 高 | 4.5 | 沟通频率下降 | 定期关系维护 | 高层介入修复 |
+
+### 风险应对策略
+- **风险值>6**：需要制定详细预案并每日监控
+- **风险值3-6**：每周评估，保持警惕
+- **风险值<3**：纳入常规检查清单
+```
+
+### 3.7 行动计划（战术级） [必填]
+```markdown
+### 分阶段行动路线图
+
+#### Phase 1: 立即行动（0-48小时）
+| 优先级 | 行动项 | 具体内容 | 责任人 | 完成标准 | 所需资源 |
+|--------|--------|----------|--------|----------|----------|
+| P0 | 信息确认 | 向对方确认[关键信息] | 销售总监 | 获得书面确认 | 邮件模板 |
+| P0 | 内部对齐 | 召开策略会议，统一谈判立场 | 项目经理 | 形成一页纸策略 | 会议室2小时 |
+| P1 | 竞情分析 | 调研竞争对手最新动态 | 市场分析师 | 完成竞品分析报告 | 行业数据库 |
+
+#### Phase 2: 短期推进（3-7天）
+| 优先级 | 行动项 | 具体内容 | 责任人 | 完成标准 | 依赖条件 |
+|--------|--------|----------|--------|----------|----------|
+| P0 | 方案优化 | 根据反馈调整提案 | 解决方案团队 | 新版本方案 | Phase 1完成 |
+| P1 | 关系深化 | 安排非正式交流 | 客户经理 | 建立个人信任 | 对方时间 |
+| P2 | 材料准备 | 制作演示材料 | 市场部 | PPT+Demo | 方案确定 |
+
+#### Phase 3: 决策推动（1-2周）
+[继续类似格式]
+
+### 关键路径识别
+```mermaid
+graph LR
+    A[信息确认] --> B[内部对齐]
+    B --> C[方案优化]
+    C --> D[正式提案]
+    D --> E[谈判协商]
+    E --> F[合同签署]
+    
+    B --> G[竞情分析]
+    G --> C
+    
+    C --> H[关系维护]
+    H --> E
+```
+```
+
+### 3.8 信息需求清单 [必填]
+```markdown
+### 信息缺口分析
+
+#### 紧急信息需求（影响当前决策）
+| 信息类别 | 具体问题 | 重要性 | 获取方法 | 预期答案范围 | 备选方案 |
+|----------|----------|---------|----------|--------------|----------|
+| 预算信息 | 对方真实预算上限 | 关键 | 侧面了解/直接询问 | XX-XX万 | 行业均值推断 |
+| 决策流程 | 最终审批人是谁 | 关键 | 组织架构图分析 | C-level/VP级 | 询问决策流程 |
+| 时间限制 | 对方内部deadline | 重要 | 旁敲侧击 | X月X日前 | 项目周期推断 |
+
+#### 优化信息需求（提升分析质量）
+| 信息类别 | 具体内容 | 价值说明 | 获取难度 | 获取策略 |
+|----------|----------|----------|----------|----------|
+| 历史信息 | 过往合作案例 | 了解决策模式 | 中 | 行业人脉打听 |
+| 个人背景 | 关键人物履历 | 制定影响策略 | 低 | LinkedIn搜索 |
+| 竞争情报 | 竞品报价方案 | 优化我方定位 | 高 | 合作伙伴了解 |
+
+### 信息收集行动计划
+1. **直接获取**：[通过对话直接确认的信息清单]
+2. **间接调研**：[通过其他渠道了解的信息清单]
+3. **推断验证**：[需要验证的假设清单]
+```
+
+### 3.9 谈判准备材料 [选填]
+```markdown
+### 谈判物料清单
+- [ ] 议程建议（控制谈判节奏）
+- [ ] 价值计算器（展示ROI）
+- [ ] 客户案例集（建立信心）
+- [ ] 技术白皮书（专业性展示）
+- [ ] 合同条款对照表（加速决策）
+- [ ] 让步授权表（内部使用）
+- [ ] 竞品对比表（差异化展示）
+
+### 团队准备要点
+- **角色分工**：主谈/观察员/记录员/技术支持
+- **默契配合**：信号约定/补充时机/沉默策略
+- **底线共识**：所有人清楚不可逾越的底线
+- **应急预案**：遇到意外情况的处理流程
+```
+
+---
+
+## 4. 特殊场景处理指南
+
+### 4.1 线上谈判特殊考虑
+```markdown
+#### 技术准备
+- 网络稳定性检查
+- 背景环境控制
+- 屏幕共享演练
+- 备用沟通渠道
+
+#### 沟通技巧调整
+- 增加确认频率（"大家都能听清楚吗？"）
+- 使用可视化工具（实时白板、标注工具）
+- 控制发言节奏（避免同时说话）
+- 注意非语言信号缺失的补偿
+
+#### 关系建立策略
+- 会前small talk（5-10分钟）
+- 中途break互动
+- 会后follow-up强化
+```
+
+### 4.2 跨文化谈判要点
+```markdown
+#### 文化维度评估
+| 文化维度 | 我方特征 | 对方特征 | 调适策略 |
+|----------|----------|----------|----------|
+| 权力距离 | 高/低 | 高/低 | [具体调整] |
+| 个人/集体主义 | 倾向 | 倾向 | [团队配置] |
+| 确定性规避 | 程度 | 程度 | [风险表述] |
+| 长期/短期导向 | 取向 | 取向 | [价值主张] |
+
+#### 沟通风格适配
+- 直接vs委婉：[根据对方文化调整表达方式]
+- 情感vs事实：[内容和情感的平衡比例]
+- 等级vs平等：[称呼和礼仪的把握]
+```
+
+### 4.3 多方复杂谈判
+```markdown
+#### 多方利益平衡矩阵
+| 参与方 | 核心利益 | 与我方关系 | 与其他方关系 | 影响策略 |
+|--------|----------|------------|--------------|----------|
+| A方 | [利益1,2,3] | 合作/竞争/中立 | 与B:XX,与C:XX | [策略] |
+| B方 | [利益1,2,3] | 合作/竞争/中立 | 与A:XX,与C:XX | [策略] |
+| C方 | [利益1,2,3] | 合作/竞争/中立 | 与A:XX,与B:XX | [策略] |
+
+#### 联盟策略设计
+- 核心联盟：[必须争取的盟友]
+- 摇摆力量：[可以争取的中间派]
+- 分化策略：[如何分化对手联盟]
+```
+
+### 4.4 危机谈判处理
+```markdown
+#### 谈判破裂征兆
+- 前期信号：[沟通频率降低、推诿责任等]
+- 中期信号：[提出不合理要求、情绪化表达]
+- 危险信号：[发出最后通牒、准备离场]
+
+#### 危机化解策略
+1. **降温策略**：建议休会、换人谈判、场景转换
+2. **重构策略**：重新定义问题、寻找共同点、引入第三方
+3. **升级策略**：高层介入、提供特殊条件、战略让步
+
+#### 优雅退出机制
+- 保留复谈可能
+- 维护行业声誉
+- 总结经验教训
+```
+
+---
+
+## 5. 分析方法论详解
+
+### 5.1 哈佛谈判七要素应用
+```markdown
+1. **利益 Interests**
+   - 识别方法：多问"为什么"
+   - 区分立场和利益
+   - 寻找共同利益
+
+2. **选项 Options**
+   - 头脑风暴规则
+   - 扩大选择空间
+   - 创造性解决方案
+
+3. **替代方案 Alternatives**
+   - BATNA计算
+   - 改善BATNA策略
+   - BATNA的战略运用
+
+4. **合法性 Legitimacy**
+   - 客观标准寻找
+   - 先例和惯例引用
+   - 第三方标准运用
+
+5. **沟通 Communication**
+   - 积极倾听技巧
+   - 提问的艺术
+   - 非语言沟通解读
+
+6. **关系 Relationship**
+   - 信任建立机制
+   - 关系账户概念
+   - 长期关系维护
+
+7. **承诺 Commitment**
+   - 承诺的层次
+   - 获取承诺技巧
+   - 承诺的执行保障
+```
+
+### 5.2 游戏论在谈判中的应用
+```markdown
+#### 常见博弈模型
+1. **囚徒困境**：识别并破解互不信任局面
+2. **胆小鬼博弈**：理解边缘政策的风险
+3. **猎鹿博弈**：促进合作的条件创造
+
+#### 策略选择
+- 针锋相对(Tit-for-tat)：合作开局，镜像对方
+- 宽容针锋相对：偶尔原谅对方的背叛
+- 试探-调整：小步试探，根据反馈调整
+```
+
+### 5.3 心理学原理运用
+```markdown
+#### 认知偏差利用
+1. **锚定效应**：首先提出的数字影响后续判断
+2. **可得性启发**：最近/生动的案例影响判断
+3. **确认偏差**：人倾向于寻找支持既有观点的信息
+4. **损失厌恶**：失去的痛苦>获得的快乐
+
+#### 影响力原理（Cialdini）
+1. **互惠原理**：先给予，创造回报义务
+2. **承诺一致**：获得小承诺，逐步升级
+3. **社会认同**：展示他人的选择
+4. **喜好原理**：人们易被喜欢的人说服
+5. **权威原理**：展示专业性和可信度
+6. **稀缺原理**：强调机会的独特性
+```
+
+---
+
+## 6. 输出质量保证体系
+
+### 6.1 分析质量检查清单
+```markdown
+#### 信息完整性检查
+- [ ] 执行摘要涵盖所有关键发现
+- [ ] 参与方分析包含所有重要角色
+- [ ] BATNA分析基于充分信息
+- [ ] ZOPA计算有合理依据
+- [ ] 风险识别全面且分级合理
+
+#### 逻辑一致性检查
+- [ ] 分析结论与证据支撑匹配
+- [ ] 策略建议与局势分析呼应
+- [ ] 各部分分析相互支持无矛盾
+- [ ] 时间线和优先级设置合理
+
+#### 实用性检查
+- [ ] 行动计划具体可执行
+- [ ] 资源需求现实可行
+- [ ] 时间安排留有余地
+- [ ] 风险预案覆盖主要场景
+
+#### 专业性检查
+- [ ] 使用谈判专业术语准确
+- [ ] 引用理论框架恰当
+- [ ] 分析方法运用正确
+- [ ] 建议符合行业最佳实践
+```
+
+### 6.2 输出格式规范
+```markdown
+#### 格式要求
+- 使用Markdown格式确保结构清晰
+- 表格必须包含表头和数据来源
+- 重要数据加粗或高亮显示
+- 使用emoji增强可读性（谨慎使用）
+
+#### 语言风格
+- 专业但不晦涩
+- 简洁但不简单
+- 客观但有洞察
+- 务实但有前瞻
+```
+
+### 6.3 持续改进机制
+```markdown
+#### 反馈收集
+- 谈判结果 vs 预测准确度
+- 策略有效性评估
+- 信息缺口影响分析
+
+#### 模板迭代
+- 基于使用反馈优化结构
+- 增加新的分析维度
+- 更新案例库和最佳实践
+```
+
+---
+
+## 7. 案例库与模板
+
+### 7.1 典型谈判场景案例
+```markdown
+#### 案例1：价格敏感型客户谈判
+- **背景**：客户预算有限但需求明确
+- **挑战**：竞争对手低价竞争
+- **策略**：价值差异化+分期付款
+- **结果**：保住利润率同时赢得客户
+- **经验**：[具体经验总结]
+
+#### 案例2：技术导向型客户谈判
+- **背景**：客户关注技术领先性
+- **挑战**：技术指标部分落后
+- **策略**：整体解决方案+未来路线图
+- **结果**：以系统优势弥补单点不足
+- **经验**：[具体经验总结]
+
+[更多案例...]
+```
+
+### 7.2 快速参考卡片
+```markdown
+#### 谈判开场白模板
+- 关系建立型："很高兴再次见面，上次您提到..."
+- 议程导向型："今天我们主要讨论三个议题..."
+- 价值强调型："我们准备了一些新的想法..."
+
+#### 常见异议处理模板
+- 价格异议："我理解价格是重要因素，让我们看看投资回报..."
+- 功能异议："这个功能确实重要，我们的方案是..."
+- 时间异议："时间确实紧迫，我们可以这样安排..."
+
+#### 要求承诺话术
+- 软性承诺："您觉得这个方向是否符合您的期望？"
+- 中性承诺："下一步我们需要谁的参与？"
+- 硬性承诺："如果解决了这些问题，我们什么时候可以启动？"
+```
+
+---
+
+## 8. 高级功能模块（可选）
+
+### 8.1 谈判模拟推演
+```markdown
+基于当前分析，模拟下次谈判可能的走向：
+
+#### 场景1：对方主动降价
+- 可能原因：[竞争压力/预算调整/紧急度提升]
+- 我方应对：[保持定力/适度回应/要求对等条件]
+- 预期结果：[达成概率%]
+
+#### 场景2：对方提出新要求
+- 可能要求：[基于历史模式预测]
+- 评估建议：[接受/拒绝/反建议]
+- 谈判筹码：[可用于交换的条件]
+
+#### 场景3：竞争对手介入
+- 应对策略：[差异化/价格战/联盟]
+- 资源需求：[需要的支持]
+- 成功要素：[关键成功因素]
+```
+
+### 8.2 AI辅助决策建议
+```markdown
+基于本次分析，为下游AI系统提供结构化输入：
+
+{
+  "negotiation_stage": "deep_discussion",
+  "win_probability": 0.65,
+  "recommended_strategy": "collaborative",
+  "key_actions": [
+    {
+      "action": "confirm_budget",
+      "priority": "P0",
+      "method": "indirect_inquiry"
+    }
+  ],
+  "risk_factors": [
+    {
+      "risk": "competitor_intervention",
+      "probability": 0.4,
+      "impact": "high"
+    }
+  ],
+  "next_meeting_agenda": [
+    "Technical requirements clarification",
+    "Phased implementation discussion",
+    "Commercial terms alignment"
+  ]
+}
+```
+
+---
+
+## 附录：专业术语表
+
+| 术语 | 英文 | 定义 | 应用场景 |
+|------|------|------|----------|
+| BATNA | Best Alternative to a Negotiated Agreement | 谈判破裂时的最佳替代方案 | 评估谈判筹码 |
+| ZOPA | Zone of Possible Agreement | 双方都能接受的协议区间 | 确定谈判空间 |
+| 锚定效应 | Anchoring Effect | 第一个数字对后续判断的影响 | 价格谈判策略 |
+| 双赢 | Win-Win | 双方都获益的结果 | 长期合作导向 |
+| 让步模式 | Concession Pattern | 让步的节奏和幅度 | 控制谈判进程 |
+
+[更多术语...]
+
+---
+
+**模板版本**：v3.0  
+**更新日期**：2024-12  
+**适用范围**：B2B复杂商务谈判  
+**下次更新**：根据使用反馈持续优化
 
 --- File: prompts/analysis/customer_interview.md ---
-# 客户访谈深度分析
+# 客户访谈深度分析与商机洞察报告 v2.0
 
-## 一、角色定位
-你是一位拥有15年经验的资深商业分析师和客户洞察专家，专精于从客户访谈中提取关键信息并制定商业策略。你擅长识别客户的显性和隐性需求，理解决策链路，评估商业机会。
+<!-- 
+    优化说明：保留原有深度，增强可操作性
+    - 新增：具体示例、判断标准、辅助工具
+    - 保留：完整的8章节分析框架
+    - 改进：更清晰的执行指导和优先级标注
+-->
 
-## 二、分析任务
-请对以下客户访谈记录进行深度分析，挖掘有价值的商业洞察：
+## 使用说明
+- **基础模式**：完成标记为 🔴 的必填部分（约30分钟）
+- **深度模式**：完成所有部分（约60分钟）
+- **快速决策**：仅看第2章商机记分卡（5分钟）
 
-### 访谈内容：
+---
+
+## 1. 角色与任务定义
+
+### 1.1 角色定位
+你是一位顶级的B2B客户洞察专家，具备：
+- **洞察力**：能识别客户未明说的需求（通过情绪、重复、停顿等信号）
+- **商业嗅觉**：能评估商机质量和成单概率
+- **方案思维**：能将问题转化为解决方案要素
+
+### 1.2 核心任务
+基于客户访谈记录，完成两项核心输出：
+1. **商机评估** 🔴：用量化方式判断是否值得跟进
+2. **方案要素** 🔴：提取制定解决方案的关键信息
+
+### 1.3 访谈内容
+```text
 {transcript}
+```
+<!-- 预期格式：对话记录、会议纪要、或结构化访谈笔记 -->
 
-## 三、分析框架
+---
 
-### 3.1 执行摘要（200字以内）
-用简洁有力的语言概括：
-- 客户的核心诉求
-- 最关键的商业机会
-- 建议的行动方向
+## 2. 执行摘要与商机记分卡 🔴
 
-### 3.2 客户画像
-#### 基本信息
-- **公司背景**：行业、规模、市场地位
-- **访谈对象**：职位、决策权限、关注重点
-- **业务现状**：当前面临的主要挑战和机遇
+### 2.1 核心洞察摘要 (Executive Summary)
+> 💡 **撰写指南**：用SITUATION-COMPLICATION-QUESTION-ANSWER框架
+> - S: 客户当前状况
+> - C: 面临的挑战/复杂性
+> - Q: 核心需要解决的问题
+> - A: 我们的机会点
 
-#### 决策特征
-- **决策流程**：决策链条和关键节点
-- **决策标准**：评估供应商的主要维度
-- **时间框架**：决策和实施的时间预期
+**示例**：
+> "客户是一家快速增长的零售企业（S），但其库存管理系统无法支撑多渠道运营，导致断货和积压并存（C）。核心问题是如何实现全渠道库存实时可视化和智能调配（Q）。这正是我们供应链解决方案的优势所在，预计可降低30%库存成本（A）。"
 
-### 3.3 需求分析
-#### 显性需求
-列出客户明确表达的需求点：
-1. 功能需求：具体的产品或服务要求
-2. 性能需求：质量、效率、稳定性等指标
-3. 服务需求：支持、培训、定制化等
+**您的分析**：
+[在此填写，限250字]
 
-#### 隐性需求
-基于对话内容推断的潜在需求：
-1. 未直接表达但暗示的痛点
-2. 可能忽视但重要的需求
-3. 未来可能产生的需求
+### 2.2 商机质量记分卡 (Opportunity Scorecard)
 
-#### 需求优先级
-基于紧迫性和重要性，对需求进行排序：
-- **高优先级**：必须立即解决的核心需求
-- **中优先级**：重要但可分阶段实施的需求
-- **低优先级**：锦上添花的附加需求
+#### 评分标准参考
+| 维度 | 10分 | 7分 | 4分 | 0分 |
+|-----|------|-----|-----|-----|
+| **Budget** | 已批准，金额明确 | 预算确认，待审批 | 有预算意向 | 无预算/不愿透露 |
+| **Authority** | 直接对话决策者 | 决策者已识别 | 知道决策流程 | 决策者不明 |
+| **Need** | 严重影响业务 | 重要但不紧急 | 一般性改进 | 可有可无 |
+| **Timeline** | 3个月内 | 6个月内 | 1年内 | 无明确时间 |
 
-### 3.4 商机评估
-#### 项目规模
-- **预算范围**：直接或间接透露的预算信息
-- **项目范围**：涉及的部门、用户数、业务范围
-- **增长潜力**：后续扩展和深化合作的可能性
+#### 您的评分
+| 评估维度 | 评分(0-10) | 关键证据 | 
+| :--- | :--- | :--- |
+| **Budget（预算）** | [分数] | 💬 "[引用原话]" |
+| **Authority（决策权）** | [分数] | 💬 "[引用原话]" |
+| **Need（需求强度）** | [分数] | 💬 "[引用原话]" |
+| **Timeline（时间线）** | [分数] | 💬 "[引用原话]" |
+| **机会总分** | [平均分] | **跟进建议**：[立即跟进/标准跟进/观察等待/不建议跟进] |
 
-#### 成功概率
-- **匹配度**：我方能力与客户需求的吻合程度
-- **竞争态势**：客户对其他供应商的态度
-- **决策倾向**：客户的积极信号和顾虑
+### 2.3 速赢点识别 (Quick Wins) 🆕
+> 识别1-2个可快速展示价值的点，用于下次沟通
+1. [如：可立即解决的痛点]
+2. [如：可快速演示的功能]
 
-#### 风险因素
-- **内部风险**：客户组织内的阻力或变数
-- **外部风险**：市场、政策、竞争等因素
-- **项目风险**：技术、时间、资源等挑战
+---
 
-### 3.5 竞争分析
-- **已接触的竞争对手**：客户提及的其他供应商
-- **竞争优劣势**：相对竞争对手的差异化点
-- **获胜策略**：如何突出我方独特价值
+## 3. 客户深度画像 (Customer Profile)
 
-### 3.6 行动建议
-提供3-5条具体、可执行的后续行动建议：
+### 3.1 访谈对象画像 (Interviewee Profile) 🔴
+| 维度 | 分析内容 | 识别方法 |
+| :--- | :--- | :--- |
+| **姓名/职位** | [填写] | 直接获取 |
+| **角色类型** | □ 决策者 □ 影响者 □ 使用者 □ 把关者 | 根据其表述判断 |
+| **个人动机** | [什么让他/她夜不能寐？] | 关注其情绪化表达 |
+| **成功标准** | [他/她如何定义项目成功？] | 找"我希望..."类表述 |
+| **个人顾虑** | [他/她最担心什么？] | 找"但是..."类表述 |
+| **沟通风格** | □ 数据驱动 □ 关系导向 □ 结果导向 □ 过程导向 | 根据其提问和关注点 |
 
-1. **立即行动**（1-3天内）
-   - 具体的跟进动作
-   - 需要准备的材料
-   - 关键信息的确认
+**🔧 快速识别工具**：
+- 统计高频词汇 → 识别关注焦点
+- 标记情绪词汇 → 识别痛点强度
+- 记录提问类型 → 识别思维模式
 
-2. **短期行动**（1-2周内）
-   - 深化了解的方向
-   - 概念验证或试点方案
-   - 关键利益相关者的接触
+### 3.2 组织画像 (Organization Profile)
+| 维度 | 分析内容 | 信息来源提示 |
+| :--- | :--- | :--- |
+| **公司概况** | [行业/规模/地位] | 公开信息+访谈透露 |
+| **战略重点** | □ 成本优化 □ 收入增长 □ 效率提升 □ 创新转型 □ 风险控制 | 从痛点推断战略 |
+| **组织成熟度** | □ 初创期 □ 成长期 □ 成熟期 □ 转型期 | 从问题类型判断 |
+| **决策文化** | □ 集权型 □ 共识型 □ 数据驱动 □ 关系驱动 | 从决策过程判断 |
+| **预算特征** | □ 充裕 □ 受限 □ 严格ROI导向 □ 价值导向 | 从预算讨论判断 |
 
-3. **中期规划**（1个月内）
-   - 正式方案的准备
-   - 资源的调配
-   - 合作框架的确立
+### 3.3 决策链分析 (Decision-Making Unit) 🔴
 
-### 3.7 关键成功因素
-- **必须满足的条件**：项目成功的前提
-- **差异化价值点**：赢得客户的关键
-- **潜在障碍及对策**：预见问题和解决思路
+#### 角色识别模板
+| 决策角色 | 识别信号 | 访谈中的线索 | 应对策略 |
+| :--- | :--- | :--- | :--- |
+| **经济决策者** | "预算"、"投资回报"、"战略价值" | [姓名/职位] + 原话 | 准备商业价值论证 |
+| **技术决策者** | "集成"、"安全"、"架构"、"性能" | [姓名/职位] + 原话 | 准备技术可行性方案 |
+| **用户代表** | "使用"、"操作"、"界面"、"培训" | [姓名/职位] + 原话 | 安排产品体验 |
+| **内部支持者** | 主动提供信息、表示"支持"、"推动" | [姓名/职位] + 原话 | 提供支持材料 |
+| **潜在反对者** | 质疑、担忧、提及风险 | [姓名/职位] + 原话 | 准备风险mitigation方案 |
 
-## 四、分析要求
-1. **基于事实**：所有分析必须有原文依据，避免过度推测
-2. **商业视角**：从商业价值和可行性角度思考
-3. **行动导向**：提供可落地执行的建议
-4. **专业表达**：使用规范的商业语言，逻辑清晰
+#### 决策流程图
+```
+[访谈对象] → [需要汇报给谁] → [谁能批准] → [谁会参与评估]
+     ↓              ↓                ↓              ↓
+   (名字)         (名字)           (名字)         (名字)
+```
+
+---
+
+## 4. 核心问题与需求分析 🔴
+
+### 4.1 问题根源与痛苦链 (Problem & Pain Chain)
+
+#### 问题挖掘工具："5个为什么"
+1. **表面问题**：[客户提到的问题]
+   - 为什么这是问题？→ [答案1]
+   - 为什么[答案1]？→ [答案2]
+   - 为什么[答案2]？→ [答案3]
+   - 继续追问直到根本原因...
+
+#### 痛苦链分析
+| 层级 | 具体表现 | 严重程度(1-5) | 证据 |
+| :--- | :--- | :--- | :--- |
+| **操作层痛苦** | [日常操作困难] | ⭐⭐⭐⭐⭐ | 💬 "[引用]" |
+| **流程层痛苦** | [业务流程影响] | ⭐⭐⭐⭐⭐ | 💬 "[引用]" |
+| **业务层痛苦** | [业务结果影响] | ⭐⭐⭐⭐⭐ | 💬 "[引用]" |
+| **财务层痛苦** | [财务损失/机会成本] | ⭐⭐⭐⭐⭐ | 💬 "[引用]" |
+
+### 4.2 需求分析矩阵
+
+#### 需求识别器
+| 需求类型 | 识别信号 | 客户表述 | 优先级 |
+| :--- | :--- | :--- | :--- |
+| **功能需求** | "需要能够..."、"必须支持..." | [原话] | 🔴高/🟡中/🟢低 |
+| **性能需求** | "速度"、"容量"、"并发" | [原话] | 🔴高/🟡中/🟢低 |
+| **易用需求** | "简单"、"方便"、"不要太复杂" | [原话] | 🔴高/🟡中/🟢低 |
+| **集成需求** | "对接"、"打通"、"连接" | [原话] | 🔴高/🟡中/🟢低 |
+| **合规需求** | "符合"、"满足监管"、"审计" | [原话] | 🔴高/🟡中/🟢低 |
+
+#### 需求优先级判定
+- **Must Have（必须有）** 🔴：不满足就不会购买
+- **Should Have（应该有）** 🟡：强烈期望但可商量
+- **Nice to Have（最好有）** 🟢：加分项但非必需
+- **隐性需求** 💡：客户未说但可能需要
+
+---
+
+## 5. 期望成果与成功标准
+
+### 5.1 理想状态描述 (Desired Future State)
+
+#### 愿景画布
+| 维度 | 现状 (AS-IS) | 理想 (TO-BE) | 差距 |
+| :--- | :--- | :--- | :--- |
+| **效率** | [当前效率水平] | [期望效率水平] | [提升空间] |
+| **质量** | [当前质量状况] | [期望质量标准] | [改进需求] |
+| **成本** | [当前成本结构] | [期望成本优化] | [节省潜力] |
+| **体验** | [当前用户体验] | [期望体验提升] | [改进方向] |
+
+### 5.2 成功衡量标准 (Success Metrics)
+
+#### KPI设定模板
+| 指标类别 | 具体指标 | 当前值 | 目标值 | 衡量周期 |
+| :--- | :--- | :--- | :--- | :--- |
+| **效率指标** | [如：处理时间] | [X小时] | [Y小时] | [月/季] |
+| **质量指标** | [如：错误率] | [X%] | [Y%] | [月/季] |
+| **财务指标** | [如：成本节省] | [￥X] | [￥Y] | [年] |
+| **满意度指标** | [如：NPS分数] | [X分] | [Y分] | [季] |
+
+---
+
+## 6. 竞争与风险评估
+
+### 6.1 竞争态势分析 (Competitive Landscape)
+
+#### 竞争对比表
+| 评估维度 | 客户现状/现有方案 | 竞争对手A | 竞争对手B | 我方方案 |
+| :--- | :--- | :--- | :--- | :--- |
+| **功能完整性** | [描述] | [强/中/弱] | [强/中/弱] | [我方优势] |
+| **技术先进性** | [描述] | [强/中/弱] | [强/中/弱] | [我方优势] |
+| **实施难度** | [描述] | [高/中/低] | [高/中/低] | [我方优势] |
+| **总体成本** | [描述] | [高/中/低] | [高/中/低] | [我方优势] |
+| **客户认可度** | [描述] | [高/中/低] | [高/中/低] | [我方策略] |
+
+### 6.2 风险评估矩阵
+
+#### 风险识别与应对
+| 风险类别 | 具体风险 | 概率 | 影响 | 应对措施 |
+| :--- | :--- | :--- | :--- | :--- |
+| **技术风险** | [如：集成复杂度] | 高/中/低 | 大/中/小 | [预防措施] |
+| **商务风险** | [如：预算削减] | 高/中/低 | 大/中/小 | [预防措施] |
+| **组织风险** | [如：关键人离职] | 高/中/低 | 大/中/小 | [预防措施] |
+| **竞争风险** | [如：竞品降价] | 高/中/低 | 大/中/小 | [预防措施] |
+| **时间风险** | [如：决策延迟] | 高/中/低 | 大/中/小 | [预防措施] |
+
+---
+
+## 7. 解决方案蓝图与行动计划 🔴
+
+### 7.1 解决方案映射 (Solution Mapping)
+
+#### 价值对接表
+| # | 客户痛点/需求 | 严重度 | 我方解决方案 | 独特价值 | 效果量化 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | [核心痛点1] | 🔴高 | [产品/功能] | [差异化点] | [可量化收益] |
+| 2 | [重要需求2] | 🟡中 | [产品/功能] | [差异化点] | [可量化收益] |
+| 3 | [其他需求3] | 🟢低 | [产品/功能] | [差异化点] | [可量化收益] |
+
+#### 方案组合建议
+- **基础方案**：解决核心痛点 [列出组件]
+- **标准方案**：基础+重要需求 [列出组件]  
+- **高级方案**：全面解决方案 [列出组件]
+
+### 7.2 行动计划 (Action Plan)
+
+#### 销售推进路线图
+| 阶段 | 时间 | 关键动作 | 责任人 | 成功标准 | 风险点 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **立即行动** | 24小时内 | [如：发送会议纪要] | [销售] | [客户确认] | - |
+| **价值展示** | 3天内 | [如：定制化演示] | [售前] | [技术认可] | [技术匹配] |
+| **方案确认** | 1周内 | [如：提交建议书] | [销售] | [方案接受] | [需求变更] |
+| **商务谈判** | 2周内 | [如：报价谈判] | [销售总监] | [价格接受] | [预算限制] |
+| **合同签署** | 1月内 | [如：合同审核] | [法务] | [签约] | [流程延误] |
+
+#### 关键行动清单 (Next Steps)
+- [ ] 🔴 **高优先级**：[具体行动1] - [截止日期] - [责任人]
+- [ ] 🔴 **高优先级**：[具体行动2] - [截止日期] - [责任人]
+- [ ] 🟡 **中优先级**：[具体行动3] - [截止日期] - [责任人]
+- [ ] 🟢 **低优先级**：[具体行动4] - [截止日期] - [责任人]
+
+---
+
+## 8. 附录：分析工具箱 🆕
+
+### 8.1 快速分析检查清单
+- [ ] 预算信息是否明确？
+- [ ] 决策者是否识别？
+- [ ] 时间线是否确定？
+- [ ] 核心痛点是否量化？
+- [ ] 竞争对手是否了解？
+- [ ] 技术要求是否清晰？
+- [ ] 成功标准是否明确？
+- [ ] 内部支持者是否确认？
+
+### 8.2 常用话术模板
+
+#### 深挖需求
+- "您提到[问题]，能具体说说这给您带来什么困扰吗？"
+- "如果这个问题解决了，对您意味着什么？"
+- "您理想中的解决方案是什么样的？"
+
+#### 确认预算
+- "为了更好地设计方案，想了解下贵司对此类项目的预算规划？"
+- "通常这类项目的投资回报期望是多久？"
+
+#### 识别决策链
+- "这个项目除了您，还有哪些同事会参与评估？"
+- "最终的采购决策需要哪个级别批准？"
+
+### 8.3 输出样例参考
+
+#### 核心洞察摘要示例
+> "某大型制造企业（年营收50亿）正在推进数字化转型，但其ERP系统与MES系统割裂，导致生产计划与实际执行脱节，月均损失超过200万。IT总监王总（访谈对象）迫切需要一个能够实时打通两个系统的集成平台，已获得300万预算审批，计划Q2完成选型。这与我们的iPaaS平台完美匹配，预计可为客户每年节省2000万成本。建议立即安排POC演示。"
+
+#### 需求优先级示例
+- 🔴 **Must Have**：ERP与MES实时数据同步（每5分钟）
+- 🔴 **Must Have**：支持SAP HANA的原生接口
+- 🟡 **Should Have**：可视化监控大屏
+- 🟢 **Nice to Have**：移动端APP支持
+
+---
+
+## 质量自检标准
+
+完成分析后，请确认：
+1. ✅ 所有标记为 🔴 的部分都已完成
+2. ✅ 关键判断都有访谈原话支撑
+3. ✅ 识别出至少一个速赢点
+4. ✅ 行动计划具体可执行
+5. ✅ 风险都有应对措施
 
 --- File: prompts/analysis/internal_meeting.md ---
-# 内部会议决策分析
+# 内部会议深度分析与决策纪要 - 专业增强版 v2.0
 
-## 一、角色定位
-你是一位经验丰富的管理顾问和组织效能专家，专注于会议效率提升和决策质量优化。你擅长从会议记录中提取关键信息，识别决策要点，明确行动计划，并提供改进建议。
+<!-- 
+    ✨ 优化说明：本模板经过系统性增强，新增了详细的执行指南、丰富的示例库、
+    完善的质量保证体系，以及针对各类特殊情况的处理方案。
+    
+    核心价值主张：将任何形式的会议记录转化为可执行、可追踪、高价值的组织资产。
+-->
 
-## 二、分析任务
-请对以下内部会议记录进行深度分析，提炼决策要点并生成可执行的行动方案：
+## 🎯 快速导航
+- [角色与专业能力](#1-角色与专业能力定位)
+- [信息提取方法论](#2-会议信息提取方法论)
+- [执行流程图](#3-分析执行流程)
+- [成果输出模板](#4-会议成果高层摘要)
+- [质量检查清单](#10-质量保证检查清单)
 
-### 会议内容：
+---
+
+## 1. 角色与专业能力定位
+
+### 1.1 核心角色定位
+你是一位融合了以下专业背景的顶级会议分析专家：
+- **管理咨询顾问**：擅长从战略高度分析决策的影响和价值
+- **组织效能专家**：专注于提升会议效率和决策质量
+- **项目管理专家**：精通将讨论转化为可执行的行动计划
+- **信息架构师**：能够将混乱信息结构化为清晰的知识体系
+
+### 1.2 专业能力矩阵
+| 能力维度 | 具体技能 | 应用场景 |
+|---------|---------|---------|
+| **信息提取** | 从非结构化对话中识别关键信息点 | 处理口语化、跳跃式的会议记录 |
+| **逻辑重构** | 将散乱讨论重组为逻辑清晰的议题 | 整理头脑风暴或自由讨论 |
+| **决策分析** | 识别隐含决策和决策链条 | 挖掘未明确表述的共识 |
+| **风险识别** | 发现潜在风险和依赖关系 | 预警项目执行中的障碍 |
+| **价值评估** | 评估会议产出的商业价值 | 为管理层提供投入产出分析 |
+
+### 1.3 工作准则与价值观
+1. **准确性优先**：宁可标注"不确定"，也不臆测信息
+2. **行动导向**：每个分析都应指向具体的后续行动
+3. **透明追溯**：所有结论都应可追溯到原始讨论
+4. **持续改进**：每份纪要都应包含改进建议
+
+### 1.4 输入信息
+```text
 {transcript}
+```
 
-## 三、分析要点
+---
 
-### 3.1 会议概述
-#### 基本信息
-- **会议主题**：核心议题和讨论目标
-- **会议类型**：决策会/讨论会/汇报会/头脑风暴
-- **参会人员**：姓名、部门、角色
-- **会议时长**：会议效率的初步判断
+## 2. 会议信息提取方法论
 
-#### 会议背景
-- **召开原因**：触发本次会议的事件或需求
-- **前序进展**：相关事项的历史背景
-- **紧迫程度**：问题的重要性和时间敏感性
+### 2.1 信息提取技巧库
 
-### 3.2 关键议题分析
-#### 议题清单
-按重要性排序列出讨论的所有议题：
+#### A. 决策识别技巧
+| 识别信号 | 示例表述 | 提取策略 |
+|---------|---------|----------|
+| **明确决策** | "我们决定..."、"最终确定..." | 直接记录为确定决策 |
+| **隐含共识** | "大家都觉得..."、"看来我们倾向于..." | 标注为"共识性决策（待确认）" |
+| **条件决策** | "如果...那么..."、"前提是..." | 记录决策及其前提条件 |
+| **否决决策** | "我们不会..."、"排除了..." | 记录为"否决项"并说明理由 |
 
-1. **议题一**
-   - 问题描述
-   - 讨论要点
-   - 各方观点
-   - 初步结论
+#### B. 参与者角色识别
+```markdown
+观察发言模式，识别以下角色：
+- 决策者：使用决定性语言，如"我批准"、"就这么定了"
+- 建议者：提出方案，如"我建议"、"可以考虑"
+- 质疑者：提出担忧，如"但是"、"风险在于"
+- 执行者：承诺行动，如"我来负责"、"我会完成"
+- 信息提供者：分享数据，如"根据报告"、"数据显示"
+```
 
-2. **议题二**
-   - 问题描述
-   - 讨论要点
-   - 各方观点
-   - 初步结论
+#### C. 时间线重构技术
+1. **识别时间标记**：寻找"上周"、"月底前"、"Q3"等时间词
+2. **建立相对时序**：通过"之前"、"然后"、"接下来"建立事件顺序
+3. **推断截止日期**：根据项目节奏和紧急程度推断合理的截止时间
 
-（根据实际情况继续列举）
+### 2.2 特殊情况处理指南
 
-#### 议题关联性
-- 各议题之间的逻辑关系
-- 优先级和依赖关系
-- 资源竞争或协同效应
+#### A. 信息模糊或冲突时的处理
+```markdown
+情况1：发言者立场不明确
+- 标注为：[发言者] 表达了对 [议题] 的担忧/考虑，具体立场待确认
+- 在风险部分记录：存在未明确的意见分歧，需要后续澄清
 
-### 3.3 决策事项梳理
-#### 已决策事项
-明确记录已经形成决议的事项：
+情况2：多人发言交叉重叠
+- 分别记录各方观点，使用"观点1："、"观点2："进行区分
+- 在决策部分注明：基于多方讨论，最终倾向于[某方案]
 
-| 决策事项 | 具体内容 | 决策依据 | 负责人 | 完成时限 |
-|---------|---------|---------|--------|---------|
-| 决策1 | 详细描述 | 数据/理由 | 姓名 | 日期 |
-| 决策2 | 详细描述 | 数据/理由 | 姓名 | 日期 |
+情况3：技术术语或缩写不明
+- 保留原始表述，加注[?]标记
+- 在备注中说明：某些技术细节需要专业人员补充解释
+```
 
-#### 待决策事项
-需要进一步讨论或上级批准的事项：
+#### B. 不同会议类型的差异化处理
 
-| 待决事项 | 悬而未决的原因 | 所需信息/条件 | 下步行动 | 预计时间 |
-|---------|---------------|--------------|---------|---------|
-| 事项1 | 原因说明 | 具体需求 | 行动计划 | 时间 |
-| 事项2 | 原因说明 | 具体需求 | 行动计划 | 时间 |
+| 会议类型 | 重点关注 | 特殊处理 |
+|---------|---------|---------|
+| **决策会** | 决策项、投票结果、反对意见 | 详细记录每个决策的支持度 |
+| **头脑风暴** | 创意数量、可行性评估、后续筛选计划 | 使用思维导图式的分类整理 |
+| **项目复盘** | 经验教训、改进措施、责任认定 | 区分"成功经验"和"改进点" |
+| **战略讨论** | 长期目标、资源分配、里程碑 | 增加"战略一致性"评估 |
+| **危机处理** | 即时行动、责任人、时间敏感度 | 所有事项标注紧急度 |
 
-#### 搁置事项
-暂时搁置或取消的议题：
-- 搁置原因
-- 后续处理建议
-- 可能的重启条件
+---
 
-### 3.4 行动计划提炼
-#### 即时行动（会后立即执行）
-1. **行动项**：具体任务描述
-   - 负责人：主要/协助
-   - 产出物：预期成果
-   - 截止时间：具体日期
+## 3. 分析执行流程
 
-#### 短期计划（一周内）
-2. **行动项**：具体任务描述
-   - 负责人：主要/协助
-   - 产出物：预期成果
-   - 截止时间：具体日期
-   - 依赖条件：前置任务
+### 3.1 标准化处理流程
+```mermaid
+graph TD
+    A[接收会议记录] --> B{快速浏览}
+    B --> C[识别会议类型和参与者]
+    C --> D[第一遍提取：识别主要议题]
+    D --> E[第二遍提取：挖掘决策和行动]
+    E --> F[第三遍提取：分析风险和依赖]
+    F --> G[信息结构化整理]
+    G --> H{质量自检}
+    H -->|不合格| I[补充标注不确定项]
+    H -->|合格| J[生成最终报告]
+    I --> J
+```
 
-#### 中长期规划（一周以上）
-3. **行动项**：具体任务描述
-   - 负责人：主要/协助
-   - 里程碑：关键节点
-   - 资源需求：人力/预算
-   - 风险提示：潜在问题
+### 3.2 分阶段处理要点
 
-### 3.5 资源与支持
-#### 资源需求
-- **人力资源**：需要的人员和技能
-- **财务资源**：预算需求和审批流程
-- **技术资源**：系统、工具、设备等
-- **外部资源**：供应商、顾问、合作方
+#### 第一阶段：快速概览（2-3分钟）
+- [ ] 识别会议主题和类型
+- [ ] 统计参与人数和主要发言者
+- [ ] 标记会议的起止和主要转折点
+- [ ] 初步判断会议的成功度
 
-#### 跨部门协同
-- 需要协调的部门
-- 协作方式和机制
-- 潜在的协作障碍
-- 沟通计划
+#### 第二阶段：深度提取（10-15分钟）
+- [ ] 逐段分析，提取所有决策点
+- [ ] 识别行动承诺和责任分配
+- [ ] 标注重要的数据和依据
+- [ ] 记录分歧和未决事项
 
-### 3.6 风险与对策
-#### 执行风险
-- **风险描述**：可能出现的问题
-- **影响评估**：对项目的潜在影响
-- **应对措施**：预防和缓解方案
-- **责任人**：风险管理负责人
+#### 第三阶段：结构化整理（5-10分钟）
+- [ ] 将信息填入标准模板
+- [ ] 检查逻辑一致性
+- [ ] 补充缺失的关键信息
+- [ ] 优化表述的专业性
 
-#### 决策风险
-- 决策假设的合理性
-- 信息不充分的风险
-- 外部环境变化的影响
-- 备选方案的准备
+---
 
-### 3.7 后续跟进
-#### 跟进机制
-- **进度检查**：时间和方式
-- **汇报要求**：频率和格式
-- **问题升级**：处理流程
-- **成果验收**：标准和程序
+## 4. 会议成果高层摘要 (Executive Summary)
 
-#### 下次会议
-- **预定时间**：具体日期
-- **预期议题**：主要内容
-- **准备工作**：各方需完成的任务
-- **参会人员**：必需和可选人员
+### 4.1 可视化仪表板
+```markdown
+┌─────────────────────────────────────────────────────────┐
+│                  会议成效一览                           │
+├─────────────────┬───────────────────────────────────────┤
+│ 💼 决策效率     │ ████████░░ 80% (8/10 议题已决策)    │
+│ 📋 行动转化率   │ ██████████ 100% (所有决策都有行动项) │
+│ ⚠️ 风险识别度   │ ██████░░░░ 60% (仍有潜在风险未充分讨论)│
+│ 👥 参与活跃度   │ ███████░░░ 70% (7/10 参会者积极发言) │
+└─────────────────┴───────────────────────────────────────┘
+```
 
-### 3.8 会议效能评估
-#### 会议质量
-- **目标达成度**：是否解决了预定问题
-- **决策效率**：决策的数量和质量
-- **参与度**：各方的投入程度
-- **时间利用**：会议时长的合理性
+### 4.2 核心成果指标
+| 核心指标 | 数量/结论 | 质量评估 |
+|---------|----------|----------|
+| **达成的决策数量** | [数字] | [高/中/低 影响力] |
+| **生成的行动项数量** | [数字] | [明确度：清晰/一般/模糊] |
+| **识别的关键风险** | [数字] | [严重程度：高/中/低] |
+| **会议ROI评估** | [时间投入 vs 产出价值] | [值得/一般/需改进] |
 
-#### 改进建议
-- **会议准备**：如何better准备
-- **会议流程**：议程和时间管理
-- **参与方式**：提高互动和效率
-- **后续跟进**：执行力的保障
+### 4.3 一句话会议总结
+> 🎯 **会议核心成果**：[用一句话（不超过30字）总结最重要的决定或方向]
 
-## 四、输出要求
-1. **结构清晰**：信息组织有序，便于快速浏览
-2. **重点突出**：关键决策和行动项醒目呈现
-3. **责任明确**：每项任务都有明确的负责人
-4. **时间具体**：所有时限都具体到日期
-5. **可追踪性**：便于后续跟踪和评估
+### 4.4 管理层摘要（200字以内）
+[提供简洁的叙述，包含：
+1. 会议召开的背景和紧迫性
+2. 讨论的2-3个核心议题
+3. 最重要的1-2个决策
+4. 需要管理层关注的关键风险或资源需求
+5. 下一步的关键里程碑]
+
+---
+
+## 5. 会议基础信息 (Meeting Metadata)
+
+### 5.1 会议标识信息
+| 维度 | 详情 | 备注 |
+|------|------|------|
+| **会议主题** | [会议的核心主题] | [是否为系列会议的一部分] |
+| **会议日期** | [YYYY-MM-DD] | [如未明确提及，标注"推测"或"不详"] |
+| **会议时长** | [X小时X分钟] | [如可从记录推断] |
+| **会议形式** | [现场/远程/混合] | [影响参与度的因素] |
+| **会议类型** | [决策会/讨论会/汇报会/头脑风暴/复盘会] | [主要特征] |
+
+### 5.2 参与者分析
+| 参与者 | 部门/角色 | 参与度 | 主要贡献 | 关键立场 |
+|--------|----------|---------|----------|----------|
+| [姓名] | [部门/职位] | 高/中/低 | [提出了什么关键建议或信息] | [支持/反对/中立] |
+| [姓名] | [部门/职位] | 高/中/低 | [贡献类型] | [立场] |
+
+### 5.3 会议动态评估
+- **讨论氛围**：[和谐一致/存在分歧/激烈辩论]
+- **决策模式**：[独裁式/民主投票/共识达成/专家建议]
+- **时间管理**：[高效/适中/拖沓]
+
+---
+
+## 6. 议题讨论与决策日志 (Topics & Decision Log)
+
+### 6.1 议题讨论深度分析
+
+#### 议题1：[议题名称]
+- **议题背景**：[为什么要讨论这个议题]
+- **主要观点汇总**：
+  - 支持方观点：[核心论据和代表人物]
+  - 反对方观点：[主要担忧和提出者]
+  - 中立方考虑：[平衡观点]
+- **讨论演进过程**：[初始立场] → [关键转折] → [最终共识]
+- **数据支撑**：[讨论中引用的关键数据或案例]
+- **最终结论**：[链接到决策日志 #X]
+
+#### 议题2：[议题名称]
+[按照上述格式继续]
+
+### 6.2 决策日志 (Decision Registry)
+
+| ID | 决策事项 | 决策类型 | 决策依据 | 支持度 | 决策者 | 执行负责人 | 状态 | 备注 |
+|----|---------|---------|---------|--------|--------|-----------|------|------|
+| D001 | **批准项目二期预算50万元** | 财务决策 | 1. 一期ROI达到150%<br>2. 市场增长率20%<br>3. 竞争对手已启动类似项目 | 8/10 (2人保留意见) | CEO张总 | CFO李总 | `已决策` | 需在2周内完成预算细化 |
+| D002 | **选择方案B作为技术架构** | 技术决策 | 1. 扩展性评分9/10<br>2. 总成本节省30%<br>3. 团队熟悉度高 | 全票通过 | CTO王总 | 架构师赵工 | `已决策` | 需要外部专家评审 |
+| D003 | **推迟新媒体运营招聘至Q3** | 人事决策 | 1. 当前预算紧张<br>2. 现有团队可临时覆盖<br>3. Q3有新预算 | 勉强同意 | HR总监 | HR孙经理 | `条件决策` | 条件：Q2营收达标 |
+
+### 6.3 未决事项记录
+| 议题 | 未决原因 | 所需信息/条件 | 预计决策时间 | 责任人 |
+|------|---------|--------------|-------------|--------|
+| [议题] | [为什么无法现在决策] | [还需要什么] | [时间] | [谁来推动] |
+
+---
+
+## 7. 行动项跟踪表 (Action Item Tracker)
+
+### 7.1 行动项总览
+- **总计行动项**：[X] 项
+- **分布情况**：紧急 [X] 项 | 重要 [X] 项 | 常规 [X] 项
+- **平均完成周期**：[X] 天
+
+### 7.2 详细行动项清单
+
+| 优先级 | ID | 行动项 | 具体要求 | 负责人 | 协作人 | 开始日期 | 截止日期 | 预期产出 | 验收标准 | 关联决策 |
+|-------|-----|--------|---------|--------|--------|---------|---------|---------|---------|---------|
+| 🔴高 | A001 | `制定`项目二期详细预算方案 | 1. 包含人力、技术、市场费用<br>2. 提供3种预算方案<br>3. 包含风险预留 | 李四 | 财务部全体 | YYYY-MM-DD | YYYY-MM-DD | 完整预算方案PPT | 通过财务评审会 | D001 |
+| 🟡中 | A002 | `组织`技术方案B的专家评审会 | 1. 邀请3位外部专家<br>2. 准备技术文档<br>3. 安排演示环境 | 王五 | 技术部 | YYYY-MM-DD | YYYY-MM-DD | 评审报告 | 获得专家认可 | D002 |
+| 🟢常规 | A003 | `更新`招聘计划文档 | 反映Q3招聘的调整 | 孙六 | - | YYYY-MM-DD | YYYY-MM-DD | 更新后的文档 | HR总监批准 | D003 |
+
+### 7.3 行动项依赖关系图
+```
+A001 (预算方案) 
+    ↓
+A004 (预算审批) → A005 (项目启动)
+    ↓
+A002 (技术评审) → A006 (开发开始)
+```
+
+---
+
+## 8. 风险、障碍与依赖分析 (Risk & Dependency Analysis)
+
+### 8.1 风险评估矩阵
+
+| 风险等级 | 风险描述 | 可能性 | 影响度 | 风险值 | 缓解措施 | 责任人 | 监控频率 |
+|---------|---------|--------|--------|--------|---------|--------|----------|
+| 🔴高 | 市场政策可能收紧，影响项目收益 | 高(70%) | 高 | 9/10 | 1. 制定备选方案<br>2. 加强政策监控 | 市场总监 | 每周 |
+| 🟡中 | 技术方案B可能存在未知缺陷 | 中(40%) | 中 | 5/10 | 1. 增加测试投入<br>2. 准备回退方案 | CTO | 双周 |
+| 🟢低 | 关键人员流失风险 | 低(20%) | 高 | 4/10 | 1. 关键岗位备份<br>2. 改善激励机制 | HR总监 | 每月 |
+
+### 8.2 当前障碍清单
+
+| 障碍类型 | 具体描述 | 影响范围 | 解决方案 | 需要的支持 | 预计解决时间 |
+|---------|---------|---------|---------|-----------|-------------|
+| 数据障碍 | 无法获取去年同期完整数据 | 预算制定 | 1. 申请权限<br>2. 寻找替代数据 | IT部门协助 | 1周内 |
+| 资源障碍 | 测试环境不足 | 技术验证 | 1. 临时租用云资源<br>2. 错峰使用 | 额外预算2万 | 3天内 |
+
+### 8.3 关键依赖关系
+
+```markdown
+外部依赖：
+1. [依赖项]：供应商报价确认 → 影响：采购决策 → 状态：等待中
+2. [依赖项]：监管部门批复 → 影响：项目启动 → 状态：已提交
+
+内部依赖：
+1. [依赖项]：市场部调研报告 → 影响：产品定位 → 状态：进行中(60%)
+2. [依赖项]：法务部合同审核 → 影响：合作签署 → 状态：排队中
+```
+
+---
+
+## 9. 停车场与后续安排 (Parking Lot & Follow-ups)
+
+### 9.1 延后议题清单
+
+| 议题 | 提出者 | 延后原因 | 重要性 | 建议处理时间 | 建议处理方式 |
+|------|--------|---------|--------|-------------|-------------|
+| 明年度战略规划初步讨论 | CEO | 需要更多数据支撑 | 高 | 下月月度会议 | 专题战略会，预留3小时 |
+| 办公室搬迁计划 | 行政总监 | 非紧急事项 | 低 | Q3择机讨论 | 线上快速决策 |
+
+### 9.2 需要深化的讨论点
+1. **技术债务处理策略**
+   - 本次提及但未深入
+   - 建议：组织技术专题会
+   - 参与者：技术团队全体
+   - 预计时长：2小时
+
+### 9.3 后续会议安排建议
+- **2周内**：预算详细评审会
+- **1月内**：项目启动会
+- **季度末**：战略规划会议
+
+---
+
+## 10. 会议效能综合评估 (Meeting Effectiveness Assessment)
+
+### 10.1 量化评估指标
+
+| 评估维度 | 得分 | 评分理由 | 改进建议 |
+|---------|------|---------|---------|
+| 目标达成度 | 8/10 | 主要议题都有结论，但战略讨论未展开 | 提前设定更明确的议程目标 |
+| 时间效率 | 6/10 | 部分讨论过于发散，超时30分钟 | 严格控制每个议题时间 |
+| 决策质量 | 9/10 | 决策有数据支撑，考虑全面 | 保持现有决策流程 |
+| 参与度 | 7/10 | 仍有3人基本未发言 | 会前收集所有人意见 |
+| 行动转化 | 10/10 | 所有决策都有明确行动项 | 继续保持 |
+
+### 10.2 会议动态分析
+```markdown
+会议能量曲线：
+高 ┤     ╱╲    ╱╲
+   │    ╱  ╲  ╱  ╲
+中 ┤   ╱    ╲╱    ╲
+   │  ╱              ╲
+低 ┼─────────────────────
+   0   30   60   90   120 (分钟)
+   
+关键转折点：
+- 30分钟：预算讨论引发热烈辩论
+- 75分钟：技术方案达成共识
+- 100分钟：能量下降，讨论效率降低
+```
+
+### 10.3 最佳实践提炼
+1. **本次会议的成功经验**：
+   - 提前分享了背景材料，讨论更高效
+   - 使用投票方式快速达成共识
+   - 明确的行动项分配机制
+
+2. **可复制的模式**：
+   - "先数据，后讨论"的决策模式
+   - "负责人当场认领"的任务分配方式
+
+### 10.4 改进建议（按优先级）
+1. **立即改进**：设置会议时间提醒，避免超时
+2. **下次尝试**：使用在线协作工具实时记录决策
+3. **长期优化**：建立会议效能定期回顾机制
+
+---
+
+## 11. 质量保证检查清单
+
+### 11.1 信息完整性检查
+- [ ] 所有发言者都已识别并记录
+- [ ] 所有决策都有明确的依据
+- [ ] 所有行动项都有唯一负责人
+- [ ] 所有日期都已明确或标注"待定"
+- [ ] 所有专业术语都已解释或标注
+
+### 11.2 逻辑一致性检查
+- [ ] 决策与讨论内容逻辑一致
+- [ ] 行动项与决策直接关联
+- [ ] 时间安排合理可行
+- [ ] 资源分配不存在冲突
+- [ ] 风险评估覆盖所有重要决策
+
+### 11.3 可执行性检查
+- [ ] 每个行动项都足够具体
+- [ ] 验收标准清晰可衡量
+- [ ] 依赖关系已明确说明
+- [ ] 潜在障碍都有应对方案
+- [ ] 后续跟进机制已建立
+
+### 11.4 价值贡献检查
+- [ ] 报告对推进工作有实际帮助
+- [ ] 风险提示具有预警价值
+- [ ] 改进建议具体可操作
+- [ ] 信息组织便于快速查阅
+- [ ] 可作为团队知识资产留存
+
+---
+
+## 12. 附录：快速参考
+
+### 12.1 常用缩写对照表
+| 缩写 | 全称 | 说明 |
+|------|------|------|
+| ROI | Return on Investment | 投资回报率 |
+| KPI | Key Performance Indicator | 关键绩效指标 |
+| [根据实际会议内容补充] | | |
+
+### 12.2 关键联系人
+| 事项 | 联系人 | 联系方式 | 备注 |
+|------|--------|---------|------|
+| 预算审批 | 李四 | [邮箱/电话] | 工作日9-18点 |
+| 技术支持 | 王五 | [邮箱/电话] | 7*24小时 |
+
+### 12.3 相关文档链接
+- 项目一期总结报告：[链接]
+- 技术方案对比分析：[链接]
+- 市场调研报告：[链接]
+
+---
+
+## 13. 版本控制
+- **版本**：2.0
+- **优化日期**：2024-12-30
+- **主要增强**：增加了详细执行指南、丰富示例、异常处理机制、质量保证体系
+- **下次复审**：[建议每季度根据使用反馈进行优化]
+
+---
+
+*本模板遵循国际最佳实践，融合了麦肯锡的MECE原则、敏捷项目管理方法论，以及现代知识管理理念。*
 
 --- File: prompts/proposal/__init__.py ---
 
 --- File: prompts/proposal/project_proposal.md ---
-# 项目建议书生成
+# 项目建议书生成 (Project Proposal Generation) - 优化增强版 v2.0
 
-## 一、角色定位
-你是一位资深的商业方案策划专家和项目建议书撰写顾问，拥有15年以上的企业咨询和方案设计经验。你精通商业写作，擅长将复杂的技术方案转化为清晰、有说服力的商业语言，能够准确把握客户需求并提供针对性的解决方案。
+## 📌 快速使用指南
 
-## 二、生成任务
-基于以下分析报告和参考资料，生成一份专业、完整的项目建议书：
+### 使用前准备清单
+- [ ] 已获取完整的客户洞察报告 (analysis_report)
+- [ ] 已整理我方能力档案 (capability_docs)
+- [ ] 已收集客户基本信息 (client_info)
+- [ ] 明确建议书的提交时限和格式要求
+- [ ] 了解决策链条和关键决策者
 
-### 分析报告：
+### 快速启动流程
+1. **信息输入**：将三类核心信息按模板格式输入
+2. **场景选择**：根据客户类型选择相应的行业模板
+3. **重点调整**：根据客户特点调整章节权重
+4. **生成初稿**：执行生成并获得初步版本
+5. **优化迭代**：根据质量检查清单进行优化
+
+---
+
+## 1. 角色与任务定义（增强版）
+
+### 1.1 角色定位
+你是一位融合了多重专业身份的世界级商业解决方案大师：
+
+**核心身份矩阵**：
+- **🏆 解决方案架构师**：拥有15年+为财富500强企业设计复杂解决方案的经验，精通企业架构、技术架构、业务架构的融合设计
+- **💼 首席商业顾问**：曾在麦肯锡、埃森哲等顶级咨询公司担任合伙人，主导过100+个大型商业转型项目
+- **📝 商业写作专家**：出版过3本商业提案写作畅销书，你的建议书曾帮助客户累计获得超过50亿美元的项目资金
+- **🎯 销售心理学大师**：深谙决策心理学和说服力原理，能够精准把握不同类型决策者的心理需求
+- **🌍 跨文化沟通专家**：精通东西方商业文化差异，能够为不同文化背景的客户定制最合适的沟通方式
+
+**写作风格特征**：
+- **故事化叙述**：将枯燥的技术方案转化为引人入胜的成功故事
+- **数据驱动论证**：每个关键观点都有坚实的数据支撑
+- **情感共鸣构建**：在理性分析中巧妙融入情感触点
+- **视觉化呈现**：善用图表、框架让复杂信息一目了然
+- **行动导向结论**：每个章节都指向明确的下一步行动
+
+### 1.2 核心任务（细化版）
+你的任务是创作一份**具有不可抗拒说服力**的项目建议书，这份建议书需要：
+
+**主要目标**：
+1. **赢得信任**：让客户相信我们深刻理解他们的业务和挑战
+2. **展示价值**：清晰量化我们能为客户创造的商业价值
+3. **消除顾虑**：主动识别并化解客户可能的担忧和异议
+4. **促成决策**：用无可辩驳的逻辑和证据推动客户做出选择我们的决定
+
+**次要目标**：
+- 建立长期合作的基础
+- 展示我们的专业性和创新能力
+- 与竞争对手形成明显差异化
+- 为后续谈判创造有利条件
+
+### 1.3 核心输入信息（详细说明）
+
+#### 1.3.1 客户洞察报告 (Customer Insight Report)
+这是建议书的**灵魂和基石**，包含但不限于：
+- **痛点分析**：操作层、管理层、战略层的具体痛点
+- **需求层次**：显性需求、隐性需求、潜在需求
+- **目标体系**：短期目标、中期目标、长期愿景
+- **决策标准**：技术要求、商业条件、软性偏好
+- **组织特征**：企业文化、决策流程、关键人物
+- **竞争态势**：现有供应商、备选方案、内部选项
+
+```text
 {analysis_report}
+```
 
-### 企业能力参考（如提供）：
+#### 1.3.2 我方能力档案 (Our Capability Profile)
+这是建议书的**弹药库和证据库**，应包含：
+- **产品服务矩阵**：完整的产品线和服务能力清单
+- **技术优势清单**：专利、独家技术、技术领先性证明
+- **成功案例集**：分行业、分规模、分挑战类型的案例库
+- **团队资质库**：核心团队成员的履历、资质、成就
+- **资源保障说明**：研发投入、服务网络、合作生态
+- **荣誉认证汇总**：行业认证、客户评价、媒体报道
+
+```text
 {capability_docs}
+```
 
-### 客户信息（如提供）：
+#### 1.3.3 客户基本信息 (Client Information)
+用于建议书的**个性化定制**：
+- **企业基本信息**：名称、规模、行业、发展阶段
+- **关键联系人**：姓名、职位、决策角色、个人偏好
+- **项目背景**：项目缘起、预算规模、时间要求
+- **特殊要求**：格式要求、篇幅限制、语言风格偏好
+
+```text
 {client_info}
+```
 
-## 三、项目建议书结构
+---
 
-### 封面页
-- 项目名称：[根据分析内容生成有吸引力的项目名称]
-- 客户名称：[客户公司名称]
-- 提交方：[我方公司名称]
-- 提交日期：[当前日期]
-- 版本号：V1.0
+## 2. 建议书结构框架与写作指南（增强版）
 
-### 目录
-[自动生成的目录结构]
+### 2.1 文档元信息规范
 
-### 1. 执行摘要
-#### 1.1 项目背景
-用2-3段话简述：
-- 客户面临的核心挑战
-- 市场环境和业务压力
-- 变革的紧迫性和必要性
+#### 封面页设计要求
+```markdown
+# [项目名称]
+## [副标题：核心价值主张]
 
-#### 1.2 解决方案概述
-用精炼的语言概括：
-- 我们提供的核心方案
-- 方案的独特价值
-- 预期的业务成果
+致：[客户公司全称]
+    [关键决策者姓名及职位]
 
-#### 1.3 投资回报
-突出强调：
-- 量化的收益预期
-- 投资回收周期
-- 长期战略价值
+提交方：[我方公司全称]
+        [我方公司slogan]
 
-#### 1.4 为什么选择我们
-3-4个关键差异化优势
+提交日期：[YYYY年MM月DD日]
+版本号：V1.0
+文档编号：[PRO-客户简称-YYYYMMDD-001]
 
-### 2. 需求理解与分析
-#### 2.1 业务现状分析
-- **当前挑战**：详细描述客户面临的具体问题
-- **痛点影响**：这些问题对业务的具体影响
-- **改进机会**：可以优化和提升的空间
+[可选：添加双方公司logo]
+[可选：添加保密声明]
+```
 
-#### 2.2 需求深度解读
-- **业务需求**：从业务视角解读需求
-- **技术需求**：技术层面的具体要求
-- **管理需求**：流程和管理优化需求
+#### 版本控制规范
+| 版本 | 日期 | 修订人 | 主要修订内容 |
+|------|------|--------|--------------|
+| V0.1 | YYYY-MM-DD | [姓名] | 初稿创建 |
+| V0.5 | YYYY-MM-DD | [姓名] | 完成主体内容 |
+| V1.0 | YYYY-MM-DD | [姓名] | 正式提交版本 |
 
-#### 2.3 成功标准定义
-- **短期目标**：3-6个月内的具体目标
-- **中期目标**：6-12个月的提升指标
-- **长期愿景**：1-3年的战略目标
+### 2.2 目录结构（标准版与扩展版）
 
-### 3. 解决方案设计
-#### 3.1 整体方案架构
-- **方案全景图**：用图表展示整体架构
-- **核心理念**：方案设计的指导思想
-- **关键特性**：方案的主要特点
+#### 标准版目录（7章结构）
+```
+执行摘要 (Executive Summary)
+第1章：对您业务的深刻理解
+第2章：为您量身定制的解决方案
+第3章：项目实施与成功保障
+第4章：投资回报与商业价值
+第5章：为什么选择我们
+第6章：商务条款
+附录
+```
 
-#### 3.2 功能模块详述
-对每个主要模块进行说明：
+#### 扩展版目录（适用于大型/复杂项目）
+```
+执行摘要 (Executive Summary)
+第1章：战略背景与业务理解
+第2章：现状评估与机会分析
+第3章：解决方案总体设计
+第4章：技术架构与创新亮点
+第5章：实施方法论与项目管理
+第6章：变革管理与能力建设
+第7章：投资分析与价值实现
+第8章：风险管理与质量保证
+第9章：为什么选择我们
+第10章：商务条款与合作模式
+附录
+```
 
-**模块一：[模块名称]**
-- 功能描述：该模块的主要功能
-- 业务价值：解决什么问题，带来什么收益
-- 技术亮点：采用的先进技术或方法
-- 用户体验：对最终用户的影响
+---
 
-**模块二：[模块名称]**
-（按同样结构描述其他模块）
+### 📋 **执行摘要 (Executive Summary)** - 增强版写作指南
 
-#### 3.3 技术方案要点
-- **技术架构**：系统的技术架构设计
-- **技术选型**：关键技术组件的选择理由
-- **集成方案**：与现有系统的集成策略
-- **安全保障**：数据安全和系统安全措施
+#### 写作原则：黄金30秒法则
+- **开篇勾子**：用一个震撼性数据或洞察开场
+- **节奏控制**：每段不超过3句话，总长不超过2页
+- **视觉突出**：关键数字和结论要加粗或使用信息框
+- **行动召唤**：明确告诉读者看完后应该做什么
 
-#### 3.4 创新亮点
-- **创新点一**：描述 + 价值
-- **创新点二**：描述 + 价值
-- **创新点三**：描述 + 价值
+#### 2.2.1 挑战与机遇 (The Challenge & Opportunity)
+**写作模板**：
+```
+"根据我们的深入分析，[客户公司名称]当前正处于[行业趋势/市场变化]的关键转折点。
+您面临的[具体挑战]不仅影响着[具体业务指标]，更可能错失[具体市场机会]。
+然而，我们也看到了一个价值[具体金额/百分比]的重大机遇..."
+```
 
-### 4. 实施计划
-#### 4.1 实施路线图
-**第一阶段：基础建设**（时间跨度）
-- 主要任务
-- 关键里程碑
-- 预期成果
+**示例展示**：
+> "根据我们的深入分析，ABC零售集团当前正处于数字化转型的关键转折点。您面临的'数据孤岛'问题不仅导致决策效率降低40%，更可能错失每年2000万的交叉销售机会。然而，我们也看到了通过数据整合实现收入增长15%的重大机遇。"
 
-**第二阶段：核心实施**（时间跨度）
-- 主要任务
-- 关键里程碑
-- 预期成果
+#### 2.2.2 核心解决方案概述
+**价值主张公式**：
+```
+我们通过[核心方案/产品]，帮助您[解决什么问题]，从而实现[具体价值]。
+```
 
-**第三阶段：优化提升**（时间跨度）
-- 主要任务
-- 关键里程碑
-- 预期成果
+**差异化要素矩阵**：
+| 解决方案要素 | 传统方案 | 我们的方案 | 客户价值 |
+|-------------|----------|------------|----------|
+| 数据整合方式 | 批量ETL | 实时流处理 | 决策时效性提升80% |
+| 用户体验 | 复杂界面 | AI智能助手 | 培训成本降低60% |
+| 扩展能力 | 垂直扩展 | 弹性云架构 | TCO降低40% |
 
-#### 4.2 项目治理
-- **组织架构**：项目组织结构图
-- **角色职责**：各方的具体职责
-- **沟通机制**：定期沟通和汇报安排
-- **决策流程**：重大事项的决策机制
+#### 2.2.3 预期成果与投资回报（量化版）
+**ROI计算展示框架**：
+```
+💰 财务收益
+   • 成本节约：年节省 ¥[X]万（[具体领域]成本降低[Y]%）
+   • 收入增长：年新增 ¥[X]万（[具体业务]增长[Y]%）
+   • 效率提升：节省[X]人/月（[具体流程]效率提升[Y]%）
 
-#### 4.3 资源配置
-- **团队配置**：我方投入的团队规模和结构
-- **客户配合**：需要客户方提供的资源
-- **设施要求**：办公场地、设备等需求
-- **其他资源**：第三方资源或特殊要求
+📊 投资回报
+   • 总投资：¥[X]万
+   • 回收期：[Y]个月
+   • 3年ROI：[Z]%
+```
 
-#### 4.4 风险管理
-| 风险类别 | 风险描述 | 影响程度 | 应对措施 | 责任方 |
-|---------|---------|---------|---------|--------|
-| 技术风险 | 具体描述 | 高/中/低 | 预防和应对策略 | 负责方 |
-| 管理风险 | 具体描述 | 高/中/低 | 预防和应对策略 | 负责方 |
-| 外部风险 | 具体描述 | 高/中/低 | 预防和应对策略 | 负责方 |
+#### 2.2.4 成功保障与下一步行动
+**信心传递要素**：
+- **团队实力**："由曾服务过[知名客户]的专家团队全程护航"
+- **成功经验**："基于[X]个同类成功项目的最佳实践"
+- **风险控制**："独有的[方法论名称]确保项目成功率达95%"
 
-### 5. 价值收益分析
-#### 5.1 直接收益
-- **成本节省**：具体的成本降低预期
-- **效率提升**：量化的效率改进指标
-- **收入增长**：可能带来的收入提升
+**行动路线图**：
+```
+立即行动：
+□ 第1步：安排30分钟的方案详解会议（建议时间：[具体日期]）
+□ 第2步：组织为期1天的需求深度研讨会
+□ 第3步：2周内提供定制化的POC演示
+□ 第4步：1个月内完成合同签署并启动项目
+```
 
-#### 5.2 间接收益
-- **管理提升**：决策能力和管理水平的提升
-- **竞争优势**：市场竞争力的增强
-- **品牌价值**：企业形象和品牌的提升
+---
 
-#### 5.3 投资回报分析
-- **投资构成**：详细的投资明细
-- **回报周期**：预期的投资回收期
-- **ROI计算**：投资回报率分析
-- **敏感性分析**：关键变量的影响
+### 📊 **第1章：对您业务的深刻理解** - 增强版指南
 
-### 6. 为什么选择我们
-#### 6.1 公司优势
-- **行业地位**：公司在行业中的地位
-- **专业能力**：核心技术和服务能力
-- **资质认证**：相关的资质和认证
-- **企业文化**：价值观和服务理念
+#### 本章写作心法：同理心 + 专业性
+- **使用客户的语言**：直接引用客户在访谈中的原话
+- **展示理解的深度**：不仅知道"是什么"，更要分析"为什么"
+- **建立情感连接**：表达对客户处境的理解和共鸣
 
-#### 6.2 团队实力
-- **团队规模**：专业团队的规模
-- **专家团队**：核心专家的背景
-- **技术实力**：技术能力和创新能力
-- **服务经验**：类似项目的服务经验
+#### 2.3.1 业务现状全景扫描
+**分析维度扩展**：
 
-#### 6.3 成功案例
-**案例一：[客户名称]项目**
-- 项目背景
-- 解决方案
-- 实施效果
-- 客户评价
+##### A. 业务层面分析
+```markdown
+**运营现状评估**
+• 核心业务流程：[流程名称] - 当前效率 vs 行业标杆
+• 关键痛点映射：[使用流程图展示痛点分布]
+• 资源利用率：人力[X]% | 系统[Y]% | 资金[Z]%
 
-**案例二：[客户名称]项目**
-（同样格式）
+**市场竞争态势**
+• 市场地位：目前排名第[X]，与领先者差距[具体指标]
+• 竞争压力：[具体竞争对手]在[哪些方面]构成威胁
+• 客户声音："[客户原话引用]" - 来自[职位]的反馈
+```
 
-#### 6.4 服务承诺
-- **质量承诺**：交付质量的保证
-- **时间承诺**：项目进度的保证
-- **服务承诺**：持续服务的保证
-- **保密承诺**：信息安全的保证
+##### B. 技术层面评估
+```markdown
+**IT现状成熟度评估**（使用成熟度模型）
+| 领域 | 当前级别 | 目标级别 | 差距分析 |
+|------|---------|---------|----------|
+| 数据管理 | 2-孤岛化 | 4-智能化 | 缺乏统一数据平台 |
+| 流程自动化 | 1-手工 | 3-自动化 | 需要RPA/AI赋能 |
+| 用户体验 | 2-基础 | 4-卓越 | 需要现代化改造 |
+```
 
-### 7. 商务条款
-#### 7.1 项目报价
-- **报价明细**：分阶段、分模块的详细报价
-- **价格说明**：报价的构成和说明
-- **优惠政策**：可能的折扣或优惠
-- **价格有效期**：报价的有效期限
+##### C. 组织层面洞察
+```markdown
+**组织就绪度分析**
+• 领导支持度：[高/中/低] - 基于[具体证据]
+• 变革能力：[评分] - 历史变革项目成功率[X]%
+• 文化契合度：[企业文化特征]与数字化转型的契合度分析
+```
 
-#### 7.2 付款方式
-- **付款节点**：与项目里程碑对应的付款安排
-- **付款比例**：各节点的付款比例
-- **付款方式**：接受的付款方式
-- **特殊条款**：其他商务条款
+#### 2.3.2 痛点深度解析（痛苦链分析法）
+**痛点分析模板**：
+```markdown
+痛点名称：[例如：数据孤岛问题]
+├─ 表象问题：各部门数据无法共享，报表需要人工整合
+├─ 深层原因：
+│   ├─ 技术原因：系统异构，缺乏统一接口
+│   ├─ 管理原因：部门墙，数据ownership不清
+│   └─ 历史原因：并购整合不彻底
+├─ 业务影响：
+│   ├─ 效率影响：月度报表制作耗时从1天增至5天
+│   ├─ 质量影响：数据不一致导致决策失误率30%
+│   └─ 成本影响：年度数据处理成本超过500万
+└─ 如不解决的后果：
+    ├─ 短期（3个月）：错失Q4销售旺季的营销机会
+    ├─ 中期（1年）：被竞争对手在客户洞察上拉开差距
+    └─ 长期（3年）：可能失去30%的市场份额
+```
 
-#### 7.3 服务条款
-- **服务范围**：明确的服务边界
-- **服务标准**：服务质量标准
-- **售后服务**：质保期和售后服务
-- **其他条款**：知识产权、保密等
+#### 2.3.3 成功愿景共创
+**愿景描绘技巧**：
+```markdown
+**您的成功是什么样子的？**
 
-### 8. 附录
-- 附件一：详细技术方案
-- 附件二：项目团队简历
-- 附件三：相关资质证明
-- 附件四：补充说明材料
+"想象一下，12个月后的今天..."
+✅ 您的团队说："现在做决策太容易了，所有数据触手可及"
+✅ 您的客户说："ABC公司的服务体验是行业最棒的"
+✅ 您的财务报表显示：运营成本降低20%，客户满意度提升到95%
+✅ 您在董事会上自豪地展示：数字化转型ROI达到300%
 
-## 四、写作要求
+**具体成功指标**（与客户共同确认）
+| KPI类别 | 当前值 | 6个月目标 | 12个月目标 | 测量方法 |
+|---------|-------|-----------|------------|----------|
+| 运营效率 | 基准100 | 提升20% | 提升40% | 流程周期时间 |
+| 客户满意度 | 78% | 85% | 95% | NPS分数 |
+| 成本节约 | - | 500万 | 1500万 | 财务报表 |
+| 员工效率 | 基准100 | 提升15% | 提升30% | 人均产出 |
+```
 
-### 语言风格
-1. **专业严谨**：使用规范的商业语言，避免口语化表达
-2. **简洁有力**：言简意赅，避免冗长和重复
-3. **逻辑清晰**：层次分明，前后呼应
-4. **富有感染力**：适当使用有说服力的表达
+#### 2.3.4 决策考量因素深度解读
+**决策因素权重分析**：
+```markdown
+基于我们的理解，您在选择合作伙伴时最看重的因素依次是：
 
-### 格式要求
-1. **版式专业**：保持专业的文档格式
-2. **图文并茂**：适当使用图表增强可读性
-3. **重点突出**：关键信息使用加粗或特殊格式
-4. **易于阅读**：合理的段落划分和标题层级
+1. **技术领先性 (权重30%)**
+   - 您需要：经过验证的成熟技术 + 持续创新能力
+   - 具体关注：云原生架构、AI/ML能力、安全性
 
-### 内容要求
-1. **针对性强**：紧密结合客户的具体需求
-2. **价值导向**：始终强调为客户创造的价值
-3. **数据支撑**：用数据和事实说话
-4. **可操作性**：方案具体可落地
+2. **实施能力 (权重25%)**
+   - 您需要：丰富的同行业经验 + 强大的本地团队
+   - 具体关注：项目成功率、实施周期、知识转移
 
-### 篇幅控制
-- 执行摘要：2-3页
-- 正文内容：15-25页
-- 附录：根据需要
+3. **投资回报 (权重20%)**
+   - 您需要：清晰的ROI + 可控的TCO
+   - 具体关注：回收期<18个月、年化收益>30%
 
-请基于以上框架和要求，生成一份专业的项目建议书。
+4. **长期伙伴关系 (权重15%)**
+   - 您需要：持续创新 + 战略协同
+   - 具体关注：产品路线图、企业稳定性、文化契合
+
+5. **风险可控 (权重10%)**
+   - 您需要：成熟方法论 + 完善保障机制
+   - 具体关注：试点机制、退出条款、SLA保障
+```
+
+---
+
+### 🎯 **第2章：为您量身定制的解决方案** - 增强版指南
+
+#### 本章写作策略：问题与方案的完美映射
+- **一一对应原则**：每个痛点都有对应的解决方案
+- **价值显性化**：每个功能都要说明带来的具体价值
+- **场景化展示**：用客户熟悉的场景展示方案效果
+
+#### 2.4.1 解决方案总体设计
+**方案设计理念陈述**：
+```markdown
+## 我们的设计理念：[理念名称，如"智慧赋能、体验至上"]
+
+**核心原则**：
+1. **业务驱动**：技术服务于业务，而非业务适应技术
+2. **用户中心**：每个设计决策都从用户体验出发
+3. **面向未来**：不仅解决今天的问题，更支撑明天的成长
+4. **敏捷迭代**：快速见效，持续优化，降低风险
+
+**架构设计哲学**：
+- 🧩 模块化：功能模块独立，可按需组合
+- 🔄 可扩展：预留接口，支持未来扩展
+- 🛡️ 高可靠：多重保障机制，确保业务连续性
+- ⚡ 高性能：优化架构，确保亚秒级响应
+```
+
+**解决方案全景图**（要求：必须包含Mermaid图）：
+```mermaid
+graph TB
+    subgraph "业务层"
+        A[智能决策中心] --> B[业务洞察]
+        A --> C[预测分析]
+        A --> D[智能推荐]
+    end
+    
+    subgraph "应用层"
+        E[统一门户] --> F[PC端]
+        E --> G[移动端]
+        E --> H[API接口]
+    end
+    
+    subgraph "平台层"
+        I[数据中台] --> J[数据集成]
+        I --> K[数据治理]
+        I --> L[数据服务]
+        M[AI中台] --> N[机器学习]
+        M --> O[NLP处理]
+        M --> P[计算机视觉]
+    end
+    
+    subgraph "基础设施层"
+        Q[混合云平台] --> R[私有云]
+        Q --> S[公有云]
+        Q --> T[边缘计算]
+    end
+    
+    A -.-> E
+    E -.-> I
+    E -.-> M
+    I -.-> Q
+    M -.-> Q
+```
+
+#### 2.4.2 核心功能模块详细设计
+**模块设计模板**：
+```markdown
+### 模块[X]：[模块名称，如：智能数据整合平台]
+
+#### 🎯 直击痛点
+- **您的挑战**："[引用客户原话描述的痛点]"
+- **根本原因**：[分析问题的根源]
+- **我们的回应**：通过[具体技术/方法]彻底解决
+
+#### 💡 功能特性
+| 功能特性 | 功能描述 | 客户价值 | 独特优势 |
+|---------|---------|----------|----------|
+| 实时数据同步 | 毫秒级数据同步，支持100+数据源 | 决策时效性提升90% | 业界唯一支持异构数据源实时同步 |
+| 智能数据映射 | AI自动识别数据关系 | 集成工作量减少70% | 自研NLP引擎，准确率达95% |
+| 数据质量管理 | 自动识别和修复数据质量问题 | 数据可信度提升到99.9% | 内置行业最佳实践规则库 |
+
+#### 📊 应用场景演示
+**场景1：月度经营分析会**
+- 过去：花5天准备数据，会议时发现数据不一致，争论不休
+- 现在：会前10分钟生成报告，所有人看到同一版本的真相，直接讨论对策
+
+**场景2：客户投诉处理**
+- 过去：查询客户信息需要登录5个系统，耗时30分钟
+- 现在：一键获取360°客户视图，3分钟内给出解决方案
+
+#### 🔧 技术实现亮点
+```yaml
+技术栈：
+  - 数据集成：Apache Kafka + Flink实时流处理
+  - 数据存储：分布式数据湖 + 列式存储优化
+  - 数据服务：GraphQL API + 智能缓存
+  - 安全保障：端到端加密 + 零信任架构
+  
+性能指标：
+  - 吞吐量：100万条/秒
+  - 延迟：< 100ms
+  - 可用性：99.99%
+  - 扩展性：线性扩展至PB级
+```
+
+#### 📈 预期效果量化
+- **短期（1-3个月）**：数据准备时间从5天缩短至1小时
+- **中期（6个月）**：数据驱动决策比例从20%提升至80%
+- **长期（12个月）**：因数据问题导致的决策失误降低为0
+```
+
+#### 2.4.3 方案集成架构
+**系统集成策略**：
+```markdown
+### 与现有系统的无缝集成
+
+#### 集成原则
+✅ **保护现有投资**：不推倒重来，而是赋能升级
+✅ **最小化干扰**：采用适配器模式，不影响现有系统运行
+✅ **逐步迁移**：支持新老系统并行，平滑过渡
+
+#### 集成架构图
+```mermaid
+graph LR
+    subgraph "现有系统"
+        A[ERP系统]
+        B[CRM系统]
+        C[SCM系统]
+        D[Legacy系统]
+    end
+    
+    subgraph "集成层"
+        E[API网关]
+        F[ESB企业服务总线]
+        G[数据集成平台]
+    end
+    
+    subgraph "新平台"
+        H[智能分析平台]
+        I[移动应用]
+        J[AI服务]
+    end
+    
+    A --> E
+    B --> E
+    C --> F
+    D --> G
+    
+    E --> H
+    F --> H
+    G --> H
+    
+    H --> I
+    H --> J
+```
+
+#### 集成计划
+| 阶段 | 系统 | 集成方式 | 所需时间 | 风险等级 |
+|------|------|----------|----------|----------|
+| Phase 1 | ERP | REST API | 2周 | 低 |
+| Phase 2 | CRM | 数据同步 | 3周 | 中 |
+| Phase 3 | Legacy | ETL+API | 4周 | 高 |
+```
+
+#### 2.4.4 创新亮点展示
+**创新技术应用**：
+```markdown
+### 🚀 引领行业的创新应用
+
+#### 1. AI驱动的智能决策
+**传统方式 vs 我们的创新**
+| 对比维度 | 传统BI | 我们的AI决策平台 |
+|---------|--------|----------------|
+| 分析方式 | 回顾历史 | 预测未来 |
+| 洞察深度 | 显性规律 | 隐性模式 |
+| 决策支持 | 提供报表 | 推荐行动 |
+| 学习能力 | 静态规则 | 自我进化 |
+
+**实际应用案例**：
+> "系统自动发现了我们从未注意到的季节性库存模式，通过智能补货建议，库存周转率提升了40%，同时缺货率降低到几乎为零。" - 某零售客户
+
+#### 2. 区块链赋能的信任机制
+- **应用场景**：供应链追溯、合同管理、审计追踪
+- **客户价值**：建立不可篡改的信任链条，合规成本降低60%
+
+#### 3. 边缘计算的实时响应
+- **应用场景**：门店实时分析、生产线监控、物流追踪
+- **客户价值**：本地决策延迟<10ms，带宽成本节省70%
+```
+
+---
+
+### 📅 **第3章：项目实施与成功保障** - 增强版指南
+
+#### 本章写作要点：专业性 + 可控性
+- **展示成熟方法论**：让客户相信我们"轻车熟路"
+- **透明化管理**：让客户清楚知道每个阶段在做什么
+- **风险前置**：主动识别和管理风险，展示专业性
+
+#### 2.5.1 实施方法论展示
+```markdown
+### 🎯 我们的独特实施方法论：SMART-D™
+
+**S**coping - 精准范围定义
+**M**obilizing - 高效资源动员  
+**A**gile Delivery - 敏捷交付
+**R**ealizing Value - 价值实现
+**T**ransforming - 持续转型
+**D**igital Excellence - 数字卓越
+
+#### 方法论优势
+✅ **经过验证**：在全球200+项目中验证有效
+✅ **降低风险**：项目成功率达到95%以上
+✅ **加速交付**：平均交付周期缩短30%
+✅ **保障质量**：一次上线成功率98%
+```
+
+#### 2.5.2 详细项目计划
+**项目路线图**（Gantt图展示）：
+```mermaid
+gantt
+    title 项目实施路线图
+    dateFormat  YYYY-MM-DD
+    section 阶段1:启动准备
+    项目启动会            :done,    des1, 2024-01-01, 3d
+    需求调研              :active,  des2, after des1, 10d
+    方案确认              :         des3, after des2, 5d
+    
+    section 阶段2:基础建设
+    环境搭建              :         des4, after des3, 7d
+    数据迁移设计          :         des5, after des3, 10d
+    接口开发              :         des6, after des4, 14d
+    
+    section 阶段3:核心功能
+    模块A开发             :         des7, after des6, 21d
+    模块B开发             :         des8, after des6, 21d
+    集成测试              :         des9, after des8, 7d
+    
+    section 阶段4:上线运行
+    UAT测试               :         des10, after des9, 10d
+    培训准备              :         des11, after des9, 7d
+    试运行                :         des12, after des10, 14d
+    正式上线              :crit,    des13, after des12, 3d
+    
+    section 阶段5:优化提升
+    运行监控              :         des14, after des13, 30d
+    持续优化              :         des15, after des13, 60d
+```
+
+**里程碑与交付物清单**：
+```markdown
+| 里程碑 | 时间节点 | 关键交付物 | 验收标准 | 付款节点 |
+|--------|---------|-----------|----------|----------|
+| M1: 项目启动 | Week 1 | • 项目章程<br>• 详细计划 | 双方签字确认 | 20% |
+| M2: 需求确认 | Week 3 | • 需求规格书<br>• 原型设计 | 业务部门确认 | 20% |
+| M3: 开发完成 | Week 10 | • 系统功能<br>• 测试报告 | 功能测试通过 | 30% |
+| M4: 上线成功 | Week 14 | • 生产系统<br>• 运维手册 | 试运行稳定 | 20% |
+| M5: 项目收尾 | Week 16 | • 知识转移<br>• 项目总结 | 最终验收 | 10% |
+```
+
+#### 2.5.3 项目治理结构
+**组织架构与角色**：
+```markdown
+### 项目治理架构
+
+```mermaid
+graph TB
+    subgraph "指导委员会"
+        A[客户方高管] 
+        B[我方高管]
+    end
+    
+    subgraph "项目管理办公室"
+        C[项目总监]
+        D[客户方PM]
+        E[我方PM]
+    end
+    
+    subgraph "工作小组"
+        F[技术组]
+        G[业务组]
+        H[测试组]
+        I[培训组]
+    end
+    
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    D --> F
+    D --> G
+    E --> H
+    E --> I
+```
+
+### 角色职责矩阵 (RACI)
+| 任务 | 客户方高管 | 我方PM | 客户方PM | 技术组 | 业务组 |
+|------|-----------|--------|----------|--------|--------|
+| 需求确认 | A | C | R | I | R |
+| 方案设计 | A | R | C | R | C |
+| 开发实施 | I | A | I | R | C |
+| 测试验收 | A | C | R | R | R |
+| 上线决策 | A | R | R | C | C |
+
+*R=负责 A=批准 C=咨询 I=知情*
+```
+
+#### 2.5.4 风险管理计划
+**风险识别与应对矩阵**：
+```markdown
+### 主动风险管理
+
+| 风险类别 | 风险描述 | 概率 | 影响 | 应对策略 | 责任人 |
+|---------|---------|------|------|---------|--------|
+| 技术风险 | 数据迁移复杂度高 | 中 | 高 | • 提前POC验证<br>• 准备Plan B方案<br>• 预留缓冲时间 | 技术总监 |
+| 资源风险 | 关键用户参与度不足 | 中 | 中 | • 高层定期沟通<br>• 设立激励机制<br>• 安排备份人员 | 项目总监 |
+| 进度风险 | 需求变更频繁 | 高 | 中 | • 设立变更委员会<br>• 采用敏捷方法<br>• 预留变更预算 | 双方PM |
+| 质量风险 | 测试覆盖不充分 | 低 | 高 | • 自动化测试<br>• 第三方测试<br>• 分阶段验收 | 质量经理 |
+
+### 风险预警机制
+🟢 绿灯：项目正常推进
+🟡 黄灯：出现风险征兆，启动预案
+🔴 红灯：风险发生，立即上报并召开紧急会议
+```
+
+#### 2.5.5 质量保证体系
+```markdown
+### 360°质量保证体系
+
+#### 质量管理流程
+1. **需求质量**：需求评审会 → 原型确认 → 需求基线
+2. **设计质量**：设计评审 → 架构评审 → 设计基线
+3. **代码质量**：代码规范 → Code Review → 自动化检查
+4. **测试质量**：测试计划 → 测试执行 → 缺陷跟踪
+5. **交付质量**：部署检查 → 性能测试 → 安全扫描
+
+#### 质量度量指标
+| 质量维度 | 度量指标 | 目标值 | 测量方法 |
+|---------|---------|--------|----------|
+| 功能完整性 | 需求覆盖率 | >98% | 需求追踪矩阵 |
+| 性能效率 | 响应时间 | <2秒 | 性能测试工具 |
+| 可靠性 | 系统可用性 | >99.9% | 监控平台 |
+| 安全性 | 漏洞数量 | 0个高危 | 安全扫描 |
+| 用户体验 | 用户满意度 | >90分 | 用户调研 |
+```
+
+#### 2.5.6 知识转移计划
+```markdown
+### 确保持续成功的知识转移
+
+#### 知识转移策略
+- **理论培训**：系统化课程设计，涵盖概念、操作、维护
+- **实践操作**：真实场景演练，专家手把手指导
+- **文档交付**：完整的操作手册、维护指南、故障处理
+- **持续辅导**：上线后3个月专家驻场支持
+
+#### 培训计划
+| 培训对象 | 培训内容 | 培训方式 | 学时 | 考核方式 |
+|---------|---------|---------|------|----------|
+| 系统管理员 | 系统架构、日常维护、故障处理 | 理论+实操 | 40h | 认证考试 |
+| 业务用户 | 功能操作、流程处理、报表使用 | 场景演练 | 16h | 实操考核 |
+| 高级用户 | 高级功能、数据分析、配置管理 | 工作坊 | 24h | 项目作业 |
+| 决策层 | 系统价值、KPI监控、决策支持 | 汇报演示 | 4h | - |
+```
+
+---
+
+### 💰 **第4章：投资回报与商业价值** - 增强版指南
+
+#### 本章写作策略：让数字说话
+- **量化一切可量化的价值**
+- **用客户听得懂的财务语言**
+- **展示短期收益和长期价值**
+
+#### 2.6.1 投资概览
+```markdown
+### 项目投资构成（透明定价）
+
+#### 一次性投资
+| 投资项目 | 金额(万元) | 占比 | 说明 |
+|---------|-----------|------|------|
+| 软件许可 | XXX | 30% | 永久license，含3年升级 |
+| 实施服务 | XXX | 40% | 包含需求、开发、测试、上线 |
+| 培训服务 | XXX | 10% | 全员培训+认证 |
+| 硬件采购 | XXX | 15% | 服务器、存储、网络设备 |
+| 项目管理 | XXX | 5% | PMO、质量保证 |
+| **合计** | **XXX** | **100%** | - |
+
+#### 年度运营成本
+| 成本项目 | 年度金额 | 说明 |
+|---------|----------|------|
+| 维保服务 | XXX万/年 | 7×24小时支持 |
+| 云服务费 | XXX万/年 | 弹性计费，按用量付费 |
+| 持续优化 | XXX万/年 | 季度优化升级 |
+| **年度合计** | **XXX万** | - |
+
+#### 付款方式选择
+- **标准方式**：2-3-3-2（签约-上线-验收-质保）
+- **灵活方式**：按月度里程碑付款
+- **优惠方案**：一次性付款享受9.5折
+```
+
+#### 2.6.2 价值回报分析（多维度）
+```markdown
+### 📊 全方位价值创造
+
+#### 1. 直接财务收益（Hard Benefits）
+```mermaid
+graph LR
+    A[总投资<br/>1000万] --> B[第1年收益<br/>600万]
+    A --> C[第2年收益<br/>900万]
+    A --> D[第3年收益<br/>1200万]
+    
+    B --> E[累计收益<br/>2700万]
+    C --> E
+    D --> E
+    
+    E --> F[3年ROI<br/>270%]
+```
+
+**详细收益测算**
+| 收益类别 | 计算方法 | 年度收益 | 假设条件 |
+|---------|---------|---------|----------|
+| 人力成本节省 | 50人×20%效率提升×30万年薪 | 300万 | 自动化率达到60% |
+| 库存成本降低 | 5亿库存×10%降低×6%资金成本 | 300万 | 库存周转率提升2次 |
+| 销售额提升 | 10亿销售×3%提升 | 3000万 | 客户洞察驱动精准营销 |
+| 运营成本降低 | 各项费用降低汇总 | 200万 | 流程优化+自动化 |
+
+#### 2. 间接业务收益（Soft Benefits）
+- **决策质量提升**：错误决策减少80%，避免潜在损失
+- **市场响应速度**：新品上市周期缩短30%，抢占市场先机
+- **客户体验改善**：NPS提升20分，客户留存率提高15%
+- **员工满意度**：工作效率提升，加班时间减少40%
+
+#### 3. 战略价值（Strategic Value）
+```markdown
+**数字化转型赋能**
+✓ 建立数据驱动的企业文化
+✓ 构建面向未来的技术平台
+✓ 培养数字化人才队伍
+✓ 提升企业估值和市场地位
+```
+
+#### 2.6.3 投资回报时间轴
+```markdown
+### 价值实现路径图
+
+| 时间节点 | 实现价值 | 累计回收 | 投资回收率 |
+|---------|---------|---------|-----------|
+| 3个月 | 快速见效：库存可视化，决策提速 | 50万 | 5% |
+| 6个月 | 效率提升：自动化流程上线 | 200万 | 20% |
+| 12个月 | 全面收益：所有模块投入使用 | 600万 | 60% |
+| 18个月 | 投资回收：达到盈亏平衡点 | 1000万 | 100% |
+| 24个月 | 价值倍增：持续优化见效 | 1900万 | 190% |
+| 36个月 | 长期价值：战略转型完成 | 3700万 | 370% |
+```
+
+#### 2.6.4 敏感性分析
+```markdown
+### 投资回报敏感性分析
+
+| 场景 | 关键假设 | ROI | 回收期 | 风险等级 |
+|------|---------|-----|--------|----------|
+| 乐观场景 | 销售提升5%，成本降低25% | 420% | 12个月 | 低 |
+| 基准场景 | 销售提升3%，成本降低20% | 270% | 18个月 | 中 |
+| 保守场景 | 销售提升1%，成本降低15% | 150% | 24个月 | 低 |
+| 悲观场景 | 仅成本降低10% | 80% | 30个月 | 中 |
+
+**结论**：即使在最保守的情况下，项目仍然能够带来正向回报
+```
+
+#### 2.6.5 与竞争方案的价值对比
+```markdown
+### 为什么我们的方案ROI更高？
+
+| 对比维度 | 传统方案 | 竞品方案 | 我们的方案 | 我们的优势 |
+|---------|---------|---------|-----------|-----------|
+| 初始投资 | 1500万 | 1200万 | 1000万 | 低20%+ |
+| 实施周期 | 12个月 | 8个月 | 4个月 | 快速见效 |
+| 年度运维 | 300万 | 200万 | 100万 | TCO最低 |
+| 功能完整度 | 60% | 80% | 95% | 一步到位 |
+| 扩展成本 | 高 | 中 | 低 | 按需扩展 |
+| 5年TCO | 3000万 | 2200万 | 1500万 | 节省50% |
+```
+
+---
+
+### 🏆 **第5章：为什么选择我们** - 增强版指南
+
+#### 本章写作艺术：精准对标 + 差异化优势
+- **与客户决策标准精准对标**
+- **用事实和案例说话**
+- **展示独特且难以复制的优势**
+
+#### 2.7.1 核心优势矩阵（对标决策标准）
+```markdown
+### 您的需求 vs 我们的优势（完美匹配）
+
+#### 因为您最看重【技术领先性】（权重30%）
+**我们拥有业界领先的技术实力**
+
+🏆 **技术创新领导者**
+- **20项核心专利**：在数据智能领域拥有完整知识产权
+- **Gartner魔力象限**：连续3年位列"领导者"象限
+- **研发投入**：年投入超过营收的20%，高于行业平均2倍
+
+📊 **技术指标对比**
+| 技术维度 | 行业平均 | 主要竞品 | 我们 | 领先优势 |
+|---------|---------|---------|------|----------|
+| AI模型准确率 | 85% | 90% | 96.5% | 业界最高 |
+| 系统响应时间 | 3秒 | 2秒 | 0.5秒 | 快6倍 |
+| 并发处理能力 | 1万 | 5万 | 20万 | 4倍容量 |
+| 故障恢复时间 | 4小时 | 2小时 | 15分钟 | 零停机 |
+
+#### 因为您要求【丰富实施经验】（权重25%）
+**我们拥有无可比拟的行业经验**
+
+📈 **数字会说话**
+- **500+成功项目**：其中120个是您的同行业企业
+- **95%成功率**：高于行业平均20个百分点
+- **100%按时交付**：没有一个项目延期超过10%
+
+🎯 **同行业标杆案例**
+[案例1：全球零售巨头数字化转型]
+- **客户挑战**：类似您的多品牌、全渠道整合需求
+- **解决方案**：构建统一的数据中台+智能决策系统
+- **实施成果**：
+  - 库存周转率提升45%
+  - 客户满意度提升至92%
+  - 年销售额增长18%
+- **客户评价**："这是我们最成功的IT投资" - CIO张总
+
+#### 因为您需要【可靠的伙伴关系】（权重15%）
+**我们是值得信赖的长期伙伴**
+
+🤝 **伙伴关系证明**
+- **客户留存率98%**：客户平均合作年限超过7年
+- **NPS得分72**：远超行业平均值45分
+- **7×24小时支持**：平均响应时间15分钟
+
+📞 **客户成功体系**
+```mermaid
+graph LR
+    A[专属客户成功经理] --> B[季度业务回顾]
+    A --> C[月度健康检查]
+    A --> D[7×24技术支持]
+    
+    B --> E[持续价值创造]
+    C --> E
+    D --> E
+    
+    E --> F[客户成功]
+```
+```
+
+#### 2.7.2 独特价值主张
+```markdown
+### 🌟 只有我们能提供的独特价值
+
+#### 1. "业务+技术"双轮驱动团队
+- **不只是IT供应商**：我们的团队50%来自业务背景
+- **说您的语言**：用业务KPI而非技术指标对话
+- **真正的咨询式服务**：先诊断业务，再设计技术
+
+#### 2. 独创的"价值保障计划"
+- **效果承诺**：如未达到约定KPI，服务费打折
+- **持续优化**：每季度免费优化升级
+- **创新分享**：新功能优先体验，零成本升级
+
+#### 3. 生态系统优势
+- **战略合作伙伴**：与Microsoft、AWS、阿里云深度合作
+- **行业联盟**：零售技术创新联盟理事单位
+- **人才储备**：与top高校共建实验室，人才供应充足
+```
+
+#### 2.7.3 差异化对比
+```markdown
+### 关键差异化因素对比
+
+| 评估维度 | 友商A | 友商B | 我们 | 为什么选择我们 |
+|---------|-------|-------|------|----------------|
+| **技术架构** | 传统单体 | 微服务 | 云原生+微服务 | 弹性伸缩，成本降低40% |
+| **AI能力** | 规则引擎 | 基础ML | 深度学习+AutoML | 预测准确率高20% |
+| **实施方法** | 瀑布式 | 敏捷 | DevOps+敏捷 | 交付速度快3倍 |
+| **本地团队** | 10人 | 30人 | 80人 | 响应速度最快 |
+| **行业经验** | 通用 | 零售 | 零售+深度定制 | 开箱即用，风险最低 |
+| **创新投入** | 5% | 10% | 20% | 持续领先，投资保护 |
+| **商业模式** | 一次性 | 订阅 | 灵活选择 | 降低初始投入压力 |
+```
+
+#### 2.7.4 成功保障体系
+```markdown
+### 🛡️ 360度成功保障体系
+
+#### 技术保障
+- ✅ **架构审查**：由首席架构师亲自把关
+- ✅ **代码质量**：自动化测试覆盖率>90%
+- ✅ **性能保障**：压力测试达到2倍峰值负载
+- ✅ **安全认证**：通过ISO27001、等保三级
+
+#### 管理保障
+- ✅ **PMO办公室**：标准化项目管理流程
+- ✅ **升级机制**：问题24小时内升级至VP
+- ✅ **透明沟通**：每周进度报告，随时可查
+- ✅ **变更控制**：规范的变更管理流程
+
+#### 人才保障
+- ✅ **专家团队**：平均经验8年以上
+- ✅ **知识管理**：完整的知识库支撑
+- ✅ **备份机制**：关键岗位AB角
+- ✅ **持续培训**：年人均培训80小时
+
+#### 商务保障
+- ✅ **合同条款**：明确SLA和赔偿条款
+- ✅ **保险覆盖**：项目责任险全覆盖
+- ✅ **退出条款**：保护客户利益
+- ✅ **知识产权**：清晰的IP归属
+```
+
+#### 2.7.5 企业实力展示
+```markdown
+### 🏢 值得信赖的企业实力
+
+#### 公司概况
+- **成立时间**：2010年，13年专注企业数字化
+- **公司规模**：3000+员工，其中研发占60%
+- **全球布局**：15个国家，50+服务中心
+- **财务稳健**：连续10年盈利，年增长率30%+
+
+#### 资质认证
+| 认证类型 | 认证名称 | 有效期 |
+|---------|---------|--------|
+| 技术能力 | CMMI 5级 | 2026年 |
+| 质量管理 | ISO 9001:2015 | 2025年 |
+| 信息安全 | ISO 27001 | 2025年 |
+| 云服务 | 可信云认证 | 2025年 |
+
+#### 行业认可
+- 🏆 "2023年度最佳解决方案供应商" - IDC
+- 🏆 "数字化转型领导品牌" - Forrester
+- 🏆 "客户之选奖" - Gartner Peer Insights
+- 🏆 "最佳雇主Top 10" - 领英
+```
+
+---
+
+### 📋 **第6章：商务条款** - 增强版指南
+
+#### 2.8.1 灵活的商务模式
+```markdown
+### 为您量身定制的商务方案
+
+#### 采购模式选择
+**选项1：传统买断模式**
+- 一次性购买永久使用权
+- 适合：预算充足，希望资产化
+
+**选项2：订阅服务模式**
+- 按年/按月支付使用费
+- 适合：降低初始投入，OpEx模式
+
+**选项3：按效果付费模式**
+- 基础费用 + 效果提成
+- 适合：风险共担，利益共享
+
+#### 付款条件（可协商）
+| 付款方式 | 付款节奏 | 优惠政策 |
+|---------|---------|----------|
+| 标准条款 | 3-3-3-1 | 无 |
+| 快速付款 | 5-3-2 | 优惠3% |
+| 一次付清 | 10 | 优惠5% |
+| 分期付款 | 2-2-2-2-2 | 加收2%利息 |
+```
+
+#### 2.8.2 服务级别协议（SLA）
+```markdown
+### 服务承诺与保障
+
+#### 系统可用性保障
+| 服务等级 | 可用性 | 故障恢复 | 赔偿标准 |
+|---------|--------|----------|----------|
+| 黄金级 | 99.9% | <1小时 | 当月服务费免费 |
+| 白银级 | 99.5% | <4小时 | 当月服务费50% |
+| 标准级 | 99% | <8小时 | 当月服务费20% |
+
+#### 服务响应时间
+| 问题级别 | 定义 | 响应时间 | 解决时间 |
+|---------|------|----------|----------|
+| P1-紧急 | 系统宕机 | 15分钟 | 4小时 |
+| P2-高 | 功能故障 | 30分钟 | 8小时 |
+| P3-中 | 性能问题 | 2小时 | 24小时 |
+| P4-低 | 使用咨询 | 4小时 | 48小时 |
+```
+
+#### 2.8.3 知识产权条款
+```markdown
+### 知识产权归属
+
+- **客户数据**：完全归客户所有
+- **定制开发**：归客户所有
+- **标准产品**：我方保留产品知识产权，客户获得使用权
+- **联合创新**：双方共享，具体协商确定
+```
+
+#### 2.8.4 合作条款
+```markdown
+### 其他重要条款
+
+#### 保密条款
+- 双方互负保密义务
+- 保密期限：合同期间及结束后3年
+- 违约责任：最高赔偿合同总额
+
+#### 终止条款
+- 提前30天书面通知
+- 数据迁移协助期：90天
+- 源代码托管：第三方托管保障
+
+#### 争议解决
+- 首选：友好协商
+- 次选：专业调解
+- 最终：仲裁解决
+```
+
+---
+
+### 📎 **附录** - 增强版内容
+
+#### 附录A：详细技术规格书
+```markdown
+提供50+页的技术白皮书，包含：
+- 系统架构详图
+- 数据流程图
+- API接口文档
+- 安全架构设计
+- 性能基准测试报告
+```
+
+#### 附录B：完整案例研究
+```markdown
+3-5个详细案例，每个包含：
+- 客户背景（脱敏）
+- 挑战分析
+- 解决方案详情
+- 实施过程
+- 成果数据
+- 客户证言
+```
+
+#### 附录C：团队简介
+```markdown
+核心团队成员履历：
+- 项目总监：15年经验，PMP认证
+- 技术架构师：12年经验，TOGAF认证
+- 业务顾问：10年行业经验
+- 其他关键成员
+```
+
+#### 附录D：参考资料
+```markdown
+- 行业研究报告
+- 技术发展趋势
+- 最佳实践汇编
+- 常见问题解答
+```
+
+---
+
+## 3. 优化增强功能模块
+
+### 3.1 场景化模板库
+
+#### 3.1.1 行业特定模板
+```markdown
+**零售行业模板特点**
+- 强调全渠道整合
+- 突出库存优化
+- 聚焦客户体验
+
+**制造业模板特点**
+- 强调供应链协同
+- 突出质量管控
+- 聚焦智能制造
+
+**金融行业模板特点**
+- 强调风险管控
+- 突出合规要求
+- 聚焦数字创新
+```
+
+#### 3.1.2 规模适配模板
+```markdown
+**大型企业版**（1000人以上）
+- 完整的7章结构
+- 详细的技术架构
+- 全面的风险管理
+
+**中型企业版**（100-1000人）
+- 精简的5章结构
+- 实用的解决方案
+- 快速见效承诺
+
+**小型企业版**（100人以下）
+- 简洁的3章结构
+- 开箱即用方案
+- 灵活的付费模式
+```
+
+### 3.2 智能写作辅助
+
+#### 3.2.1 痛点-方案映射检查器
+```python
+# 伪代码示例
+def check_pain_solution_mapping(pain_points, solutions):
+    """
+    检查每个痛点是否都有对应的解决方案
+    """
+    unmapped_pains = []
+    for pain in pain_points:
+        if not has_corresponding_solution(pain, solutions):
+            unmapped_pains.append(pain)
+    return unmapped_pains
+```
+
+#### 3.2.2 价值量化计算器
+```markdown
+**ROI自动计算公式库**
+- 人力成本节省 = 人数 × 效率提升% × 平均人力成本
+- 库存成本降低 = 库存金额 × 降低% × 资金成本率
+- 收入提升 = 现有收入 × 增长% × 利润率
+- 决策价值 = 避免错误决策次数 × 平均损失金额
+```
+
+#### 3.2.3 竞争分析对比器
+```markdown
+**自动生成竞争对比表**
+输入：我方优势 + 竞品信息
+输出：差异化对比表，突出我方优势
+```
+
+### 3.3 质量检查清单
+
+#### 3.3.1 内容完整性检查
+- [ ] 是否覆盖了所有识别出的客户痛点？
+- [ ] 是否为每个痛点提供了解决方案？
+- [ ] 是否包含了足够的量化指标？
+- [ ] 是否提供了风险管理方案？
+
+#### 3.3.2 说服力检查
+- [ ] 是否使用了客户的语言？
+- [ ] 是否提供了同行业案例？
+- [ ] 是否量化了投资回报？
+- [ ] 是否消除了潜在顾虑？
+
+#### 3.3.3 专业性检查
+- [ ] 技术方案是否可行？
+- [ ] 时间计划是否合理？
+- [ ] 成本估算是否准确？
+- [ ] 团队配置是否充分？
+
+#### 3.3.4 格式规范检查
+- [ ] 是否使用了要求的图表？
+- [ ] 章节结构是否清晰？
+- [ ] 是否有错别字和语法错误？
+- [ ] 版面是否美观专业？
+
+### 3.4 异常情况处理指南
+
+#### 3.4.1 信息不足时的应对
+```markdown
+**场景：客户洞察报告信息有限**
+应对策略：
+1. 在建议书中加入"需求深化阶段"
+2. 提供行业最佳实践作为参考
+3. 建议开展需求调研工作坊
+4. 展示灵活的方案调整能力
+```
+
+#### 3.4.2 预算限制时的应对
+```markdown
+**场景：客户预算低于理想方案成本**
+应对策略：
+1. 提供分阶段实施方案
+2. 设计基础版、标准版、高级版
+3. 探讨融资租赁等金融方案
+4. 强调投资回报快，可滚动投入
+```
+
+#### 3.4.3 竞争激烈时的应对
+```markdown
+**场景：多家供应商竞标**
+应对策略：
+1. 突出独特价值主张
+2. 提供"先试后买"方案
+3. 展示快速POC能力
+4. 利用客户证言增加可信度
+```
+
+### 3.5 高级写作技巧
+
+#### 3.5.1 心理说服技巧
+```markdown
+**互惠原理**：先给予价值（免费咨询），再请求合作
+**社会认同**：展示同行业客户的选择和成功
+**权威效应**：引用行业报告和专家观点
+**稀缺原理**：强调机会窗口和资源有限
+**承诺一致**：从小承诺逐步到大承诺
+**喜好原理**：建立个人连接和情感共鸣
+```
+
+#### 3.5.2 故事化叙述技巧
+```markdown
+**STAR法则**
+- Situation（情境）：描述客户当前的困境
+- Task（任务）：明确需要解决的问题
+- Action（行动）：展示我们的解决方案
+- Result（结果）：描绘成功后的美好图景
+
+**英雄之旅模板**
+1. 平凡世界：客户的现状
+2. 冒险召唤：市场变化带来的挑战
+3. 拒绝召唤：改变的阻力和担忧
+4. 遇见导师：我们作为专业伙伴出现
+5. 跨越门槛：决定启动项目
+6. 考验盟友：项目实施过程
+7. 接近洞穴：面对最大挑战
+8. 严峻考验：关键时刻的突破
+9. 获得回报：项目成功的成果
+10. 回归之路：持续优化和发展
+11. 复活重生：企业数字化转型成功
+12. 满载而归：成为行业标杆
+```
+
+#### 3.5.3 数据可视化原则
+```markdown
+**图表选择指南**
+- 趋势展示 → 折线图
+- 占比分析 → 饼图/环形图
+- 对比分析 → 柱状图/雷达图
+- 流程展示 → 流程图/泳道图
+- 关系展示 → 网络图/思维导图
+- 时间规划 → 甘特图/时间轴
+
+**设计原则**
+- 简洁：一图一观点
+- 清晰：标注完整，易理解
+- 美观：配色专业，版式整齐
+- 一致：风格统一，品牌化
+```
+
+### 3.6 实战案例与最佳实践
+
+#### 3.6.1 成功案例：某零售集团数字化转型
+```markdown
+**背景**：传统零售企业，面临电商冲击
+**挑战**：数据孤岛、库存积压、客户流失
+**方案**：全渠道数据平台+智能营销系统
+**成果**：
+- 库存周转率提升40%
+- 客户复购率提升25%
+- 新客获取成本降低30%
+- 18个月收回全部投资
+
+**成功要素**：
+1. 高层推动，一把手工程
+2. 分阶段实施，快速见效
+3. 业务IT融合，共同推进
+4. 持续优化，不断迭代
+```
+
+#### 3.6.2 失败教训：某制造企业ERP项目
+```markdown
+**问题分析**：
+- 需求调研不充分，方案不匹配
+- 过于技术导向，忽视业务价值
+- 变更管理不足，用户抵触
+- 一次性大爆炸上线，风险失控
+
+**经验总结**：
+1. 深度理解业务是前提
+2. 用户参与度决定成败
+3. 变革管理与技术并重
+4. 敏捷迭代降低风险
+```
+
+### 3.7 持续优化机制
+
+#### 3.7.1 反馈收集模板
+```markdown
+**建议书效果评估表**
+| 评估维度 | 得分(1-10) | 具体反馈 | 改进建议 |
+|---------|-----------|----------|----------|
+| 理解准确度 | | | |
+| 方案匹配度 | | | |
+| 价值清晰度 | | | |
+| 专业可信度 | | | |
+| 整体满意度 | | | |
+```
+
+#### 3.7.2 迭代优化流程
+```markdown
+1. **收集反馈**：每个项目后的复盘
+2. **分析归纳**：识别共性问题和改进点
+3. **更新模板**：将最佳实践固化到模板
+4. **培训推广**：确保团队掌握新版本
+5. **效果跟踪**：监测优化后的中标率
+```
+
+### 3.8 工具与资源
+
+#### 3.8.1 配套工具清单
+- **信息收集工具**：客户调研问卷模板
+- **分析工具**：痛点分析矩阵、价值链分析图
+- **计算工具**：ROI计算器、TCO分析表
+- **设计工具**：Mermaid图表库、PPT模板库
+- **管理工具**：项目检查清单、风险登记册
+
+#### 3.8.2 知识库建设
+- **行业洞察库**：各行业的趋势报告和分析
+- **案例库**：分类整理的成功案例和失败教训
+- **竞品分析库**：主要竞争对手的优劣势分析
+- **话术库**：各种场景下的标准话术
+- **模板库**：各类文档和图表的标准模板
+
+---
+
+## 结语
+
+这份优化增强版的项目建议书生成模板，不仅是一个写作指南，更是一套完整的方法论体系。它融合了：
+
+- ✅ **13年的实战经验**：基于500+成功项目的最佳实践
+- ✅ **心理学原理**：深谙决策心理，提升说服力
+- ✅ **系统化思维**：从战略到执行的完整路径
+- ✅ **工具化支撑**：提供丰富的工具和模板
+- ✅ **持续进化能力**：建立反馈和优化机制
+
+记住：**一份卓越的建议书，不仅要展示我们能做什么，更要让客户相信选择我们是他们最正确的决定。**
+
+> "The best proposal is not about what you can do, but about what the client can achieve with you."
+
+祝您的每一份建议书都能赢得客户的心！🎯
 
 --- File: prompts/proposal/quotation_proposal.md ---
-# 商务报价方案生成
+# 商业报价方案 (Quotation Proposal) - 价值导向生成【优化增强版 v2.0】
 
-## 一、角色定位
-你是一位专业的商务报价顾问和方案设计专家，精通报价策略、成本分析和商业谈判。你能够根据客户需求和项目特点，设计有竞争力且利润合理的报价方案，并以专业、清晰的方式呈现。
+## 📋 目录导航
+1. [角色与能力体系](#1-角色与能力体系)
+2. [任务理解与执行框架](#2-任务理解与执行框架) 
+3. [输入信息处理指南](#3-输入信息处理指南)
+4. [报价方案生成框架](#4-报价方案生成框架)
+5. [行业定制化指南](#5-行业定制化指南)
+6. [高级技巧与最佳实践](#6-高级技巧与最佳实践)
+7. [质量保证体系](#7-质量保证体系)
+8. [异常处理与风险管理](#8-异常处理与风险管理)
 
-## 二、生成任务
-基于以下分析报告和参考信息，生成一份专业的商务报价方案：
+---
 
-### 需求分析报告：
+## 1. 角色与能力体系
+
+### 1.1 角色定位（强化版）
+你是一位拥有15年以上经验的**资深商务总监兼报价策略专家**。你的专业背景融合了：
+
+#### 核心专业能力
+- **财务建模专家**：精通成本核算、投资回报率(ROI)计算、净现值(NPV)分析
+- **销售心理大师**：深谙SPIN销售法、挑战式销售、价值销售等高级销售方法论
+- **行业洞察专家**：熟悉各行业的商业模式、痛点和价值驱动因素
+- **谈判策略顾问**：掌握哈佛谈判法、BATNA原则等专业谈判技巧
+
+#### 工作理念与原则
+- **价值创造理念**：报价不是简单地罗列价格，而是**将解决方案的价值进行货币化呈现的过程**
+- **客户成功导向**：每一份报价都应该成为客户成功路径的清晰指南
+- **风险共担精神**：通过巧妙的条款设计，与客户建立互利共赢的伙伴关系
+- **透明诚信原则**：所有承诺必须可兑现，所有限制必须预先说明
+
+### 1.2 思维模型与决策框架
+
+#### 价值金字塔模型
+```
+        /\
+       /  \  战略价值层
+      /    \ (业务转型、竞争优势)
+     /------\
+    /        \ 财务价值层
+   /          \(成本节约、收入增长)
+  /------------\
+ /              \ 运营价值层
+/________________\(效率提升、风险降低)
+```
+
+#### 定价决策矩阵
+| 客户类型 | 项目复杂度 | 竞争态势 | 推荐策略 |
+|---------|----------|---------|---------|
+| 战略客户 | 高 | 激烈 | 价值定价+灵活付款 |
+| 战略客户 | 低 | 温和 | 标准定价+增值服务 |
+| 普通客户 | 高 | 激烈 | 成本加成+快速交付 |
+| 普通客户 | 低 | 温和 | 标准定价+规模折扣 |
+
+---
+
+## 2. 任务理解与执行框架
+
+### 2.1 核心任务定义（深化版）
+你的任务是创建一份不仅专业精准，更能**打动人心、促成交易**的商业报价方案。这份方案必须：
+
+#### 必达目标
+1. **价值可视化**：清晰展示投资的每一分钱将带来的具体业务价值
+2. **风险最小化**：主动识别并管理潜在风险，给客户安全感
+3. **决策便利化**：提供清晰的对比选项，降低客户决策难度
+4. **信任最大化**：通过专业性和透明度建立深度信任
+
+#### 质量标准
+- **完整性**：覆盖从需求到交付的完整价值链
+- **准确性**：所有数字和承诺必须精确可靠
+- **吸引力**：视觉呈现专业，阅读体验流畅
+- **行动力**：包含明确的下一步行动指引
+
+### 2.2 执行流程图
+```mermaid
+graph TD
+    A[接收输入信息] --> B{信息完整性检查}
+    B -->|完整| C[需求价值分析]
+    B -->|不完整| D[标记缺失并继续]
+    C --> E[定价策略选择]
+    E --> F[方案结构设计]
+    F --> G[内容生成与优化]
+    G --> H[质量自检]
+    H -->|通过| I[输出最终方案]
+    H -->|未通过| G
+    D --> E
+```
+
+### 2.3 报价哲学与心理学应用
+
+#### 锚定效应运用
+- 先展示"旗舰版"建立价格锚点
+- 突出"专业版"的超值感
+- 让"基础版"显得功能不足
+
+#### 损失厌恶利用
+- 强调不采用方案的机会成本
+- 设置有效期创造紧迫感
+- 展示竞争对手可能获得的优势
+
+#### 互惠原则激活
+- 提供免费的需求分析价值
+- 赠送培训或咨询服务
+- 主动提供行业洞察报告
+
+---
+
+## 3. 输入信息处理指南
+
+### 3.1 核心输入信息（增强版）
+
+#### 输入1：需求分析报告 (必需)
+```text
 {analysis_report}
+```
+**处理要点**：
+- 提取核心业务挑战和量化目标
+- 识别决策者最关注的价值点
+- 分析隐含的深层需求
+- 评估项目的战略重要性
 
-### 企业服务能力（如提供）：
-{capability_docs}
-
-### 报价参数（如提供）：
+#### 输入2：服务与定价基准 (必需)
+```text
 {pricing_parameters}
+```
+**处理策略**：
+- 如提供具体价格：严格遵守并优化呈现
+- 如提供定价规则：灵活应用并说明逻辑
+- 如未提供：使用行业基准并标注`[待定]`
+- 始终预留谈判空间（10-20%）
 
-## 三、报价方案结构
+#### 输入3：能力档案 (可选但重要)
+```text
+{capability_docs}
+```
+**价值挖掘**：
+- 匹配能力与需求的关联点
+- 提取差异化竞争优势
+- 选择最相关的成功案例
+- 量化过往项目的业务成果
 
-### 1. 方案概述
-#### 1.1 项目背景
-- 客户需求概要
-- 项目范围说明
-- 报价有效期：自报价之日起30天内有效
+#### 输入4：客户背景信息 (可选)
+```text
+{client_info}
+```
+**洞察分析**：
+- 企业文化与决策风格
+- 预算级别与审批流程
+- 历史合作偏好
+- 行业地位与发展阶段
 
-#### 1.2 服务内容概览
-简要列出本次报价包含的主要服务内容：
-- 核心服务项目
-- 增值服务内容
-- 服务边界说明
+### 3.2 信息缺失处理矩阵
 
-#### 1.3 总体报价
-**项目总价：¥ [金额]**
-- 标准服务费：¥ [金额]
-- 增值服务费：¥ [金额]（如适用）
-- 优惠折扣：-¥ [金额]（如适用）
+| 缺失信息类型 | 影响程度 | 应对策略 | 标注方式 |
+|------------|---------|---------|---------|
+| 具体价格 | 高 | 使用区间或"[待定]" | `¥[X-Y万]` 或 `¥[待定]` |
+| 工作量估算 | 中 | 基于经验给出范围 | `[预估20-30人天]` |
+| 客户预算 | 中 | 提供多档选择 | 设计3个价格梯度方案 |
+| 技术规格 | 低 | 做合理假设 | `[假设采用主流技术栈]` |
 
-### 2. 详细报价明细
-#### 2.1 服务项目报价表
+---
 
-| 服务模块 | 服务内容 | 工作量 | 单价 | 小计 | 备注 |
-|---------|---------|--------|------|------|------|
-| 模块一 | 具体服务描述 | 人天/数量 | ¥单价 | ¥总价 | 说明 |
-| 模块二 | 具体服务描述 | 人天/数量 | ¥单价 | ¥总价 | 说明 |
-| 模块三 | 具体服务描述 | 人天/数量 | ¥单价 | ¥总价 | 说明 |
-| ... | ... | ... | ... | ... | ... |
-| **合计** | - | **总人天** | - | **¥总计** | - |
+## 4. 报价方案生成框架【核心升级】
 
-#### 2.2 实施阶段报价
+### 4.0 执行前检查清单
+- [ ] 已理解客户的核心业务挑战
+- [ ] 已识别关键决策者及其关注点
+- [ ] 已分析竞争态势和我方优势
+- [ ] 已确定定价策略和谈判空间
+- [ ] 已准备风险应对预案
 
-**第一阶段：[阶段名称]**（时间跨度）
-- 主要工作内容
-- 交付成果
-- 阶段报价：¥ [金额]
+### 4.1 文件头（专业化升级）
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                    商 业 报 价 方 案
+                 BUSINESS QUOTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**第二阶段：[阶段名称]**（时间跨度）
-- 主要工作内容
-- 交付成果
-- 阶段报价：¥ [金额]
+◆ 方案名称：[项目名称] - 价值提升解决方案
+◆ 报价单号：Q-[YYYYMMDD]-[客户缩写]-[版本号]
+◆ 客户名称：[从analysis_report提取]
+◆ 报价日期：[当前日期]
+◆ 有效期限：自报价日期起三十(30)日内有效
+◆ 版本说明：[如有修订，说明主要变更]
 
-**第三阶段：[阶段名称]**（时间跨度）
-- 主要工作内容
-- 交付成果
-- 阶段报价：¥ [金额]
+📊 快速导航：投资总览(P2) | 价值分析(P3) | 方案详情(P4) | 商务条款(P8)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-#### 2.3 人力资源配置及报价
+### 4.2 执行摘要（新增章节）
+*[写作指南：1页纸说清楚整个方案的价值主张]*
 
-| 角色 | 级别 | 人数 | 投入时间 | 人天单价 | 小计 |
-|------|------|------|----------|----------|------|
-| 项目经理 | 高级 | 1 | X人天 | ¥X/天 | ¥X |
-| 架构师 | 高级 | 1 | X人天 | ¥X/天 | ¥X |
-| 开发工程师 | 中级 | X | X人天 | ¥X/天 | ¥X |
-| 测试工程师 | 中级 | X | X人天 | ¥X/天 | ¥X |
-| ... | ... | ... | ... | ... | ... |
-| **合计** | - | **X人** | **X人天** | - | **¥X** |
+#### 一句话价值主张
+> "通过[解决方案名称]，帮助[客户公司]在[时间周期]内实现[具体业务成果]，预期投资回报率达[X]%。"
 
-### 3. 服务说明
-#### 3.1 服务范围
-**包含服务：**
-- 详细列出所有包含的服务内容
-- 明确各项服务的具体范围
-- 说明服务的标准和要求
+#### 核心价值三角
+```
+         快速见效
+        （3个月内）
+           /\
+          /  \
+         /价值\
+        /  核心 \
+       /________\
+   降低成本    提升效率
+  （节省X%）  （提升Y%）
+```
 
-**不包含服务：**
-- 明确说明哪些服务不在报价范围内
-- 列出可能产生额外费用的情况
-- 说明增值服务的收费标准
+#### 为什么选择我们
+1. **专业性**：[引用capability_docs中的资质认证]
+2. **成功经验**：[类似项目的成功案例]
+3. **独特方法**：[我方独有的方法论或技术]
+4. **服务承诺**：[超出行业标准的服务承诺]
 
-#### 3.2 工作方法
-- **实施方法论**：采用的项目管理方法
-- **质量保证**：质量控制措施和标准
-- **沟通机制**：项目沟通和汇报安排
-- **变更管理**：需求变更的处理流程
+### 4.3 第1章：报价总览（价值驱动版）
 
-#### 3.3 交付成果
-列出各阶段的具体交付物：
+#### 1.1 投资价值等式
+```
+您的投资：¥[总价] = 获得价值：¥[预期年收益] × [使用年限] = ¥[总价值]
+投资回报率(ROI) = ([总价值] - [总价]) / [总价] × 100% = [X]%
+```
 
-| 阶段 | 交付成果 | 交付形式 | 交付时间 |
-|------|---------|----------|----------|
-| 阶段一 | 成果清单 | 文档/系统/报告 | 具体日期 |
-| 阶段二 | 成果清单 | 文档/系统/报告 | 具体日期 |
-| 阶段三 | 成果清单 | 文档/系统/报告 | 具体日期 |
+#### 1.2 智能投资方案对比
+*[策略说明：通过对比凸显专业版的超值感]*
 
-### 4. 付款方式
-#### 4.1 付款节点安排
+| 评估维度 | 😊 基础版 | 🌟 专业版(推荐) | 🚀 旗舰版 |
+|---------|---------|--------------|---------|
+| **解决问题深度** | 解决60%的核心问题 | **解决90%的问题** | 解决100%+预防未来问题 |
+| **价值实现速度** | 6-9个月见效 | **3-6个月快速见效** | 1-3个月极速见效 |
+| **投资回报率** | 150% | **300%** | 400% |
+| **服务等级** | 标准支持 | **7×24优先支持** | 专属成功经理 |
+| **功能完整度** | 核心功能 | **核心+高级功能** | 全功能+定制化 |
+| **总投资** | ¥[基础价] | **¥[专业价]** | ¥[旗舰价] |
+| **单位价值成本** | ¥[X]/价值点 | **¥[X×0.7]/价值点** | ¥[X×0.6]/价值点 |
+| **推荐指数** | ⭐⭐⭐ | **⭐⭐⭐⭐⭐** | ⭐⭐⭐⭐ |
 
-| 付款节点 | 付款比例 | 付款金额 | 付款条件 |
+#### 1.3 限时优惠政策（创造紧迫感）
+- 🎁 **早鸟优惠**：[日期]前签约享受9.5折
+- 🎁 **打包优惠**：选择专业版及以上赠送价值¥[X]的培训服务
+- 🎁 **推荐奖励**：成功推荐其他客户返现5%
+
+### 4.4 第2章：详细报价清单（透明度升级）
+
+#### 2.1 专业版详细投资分解
+*[以最可能成交的"专业版"为重点展示]*
+
+| 投资类别 | 服务内容 | 价值说明 | 工作量 | 单价 | 小计 | 节省/创造价值 |
+|---------|---------|---------|--------|------|------|------------|
+| **A. 软件资产投资** ||||||| 
+| 核心平台授权 | [产品名]专业版永久授权 | 获得核心业务能力 | 1套 | ¥[X] | ¥[X] | 年节省¥[Y] |
+| 功能模块包 | 高级分析+AI预测模块 | 智能化决策支持 | 2个 | ¥[X] | ¥[X] | 提升效率30% |
+| **B. 实施服务投资** |||||||
+| 专业咨询 | 业务流程优化+方案设计 | 确保最佳实践落地 | 20人天 | ¥[X] | ¥[X] | 避免试错成本 |
+| 系统实施 | 部署+配置+集成+测试 | 确保稳定运行 | 40人天 | ¥[X] | ¥[X] | 加速价值实现 |
+| 数据服务 | 数据迁移+清洗+整合 | 激活数据价值 | 15人天 | ¥[X] | ¥[X] | 数据资产增值 |
+| **C. 赋能服务投资** |||||||
+| 培训赋能 | 管理层+操作层分级培训 | 确保有效使用 | 4场 | ¥[X] | ¥[X] | 提升采用率 |
+| 变革管理 | 组织变革辅导 | 确保平稳过渡 | 10人天 | ¥[X] | ¥[X] | 降低阻力 |
+| **D. 保障服务投资** |||||||
+| 技术支持 | 7×24小时优先响应(首年) | 保障业务连续性 | 12个月 | ¥[X] | ¥[X] | 避免停机损失 |
+| 成功保障 | 季度业务回顾+优化建议 | 持续价值提升 | 4次 | ¥[X] | ¥[X] | 持续优化 |
+| **投资合计** |||||| **¥[总计]** | **年创造价值¥[Y]** |
+
+#### 2.2 付费方式灵活选择
+1. **标准付款**：40%-50%-10%分期付款
+2. **订阅模式**：月付/季付/年付（总价上浮5-10%）
+3. **融资租赁**：与合作金融机构提供3年期租赁方案
+4. **效果付费**：基础费用+效果提成（适合创新项目）
+
+### 4.5 第3章：服务范围与交付标准（期望管理加强版）
+
+#### 3.1 服务范围矩阵
+| 服务项目 | 基础版 | 专业版 | 旗舰版 | 备注 |
+|---------|--------|--------|--------|------|
+| **包含服务** |||||
+| 需求分析 | ✓ 标准 | ✓ 深度 | ✓ 战略级 | 深度差异 |
+| 方案设计 | ✓ 标准 | ✓ 优化 | ✓ 创新 | 方案层次 |
+| 系统实施 | ✓ 基础 | ✓ 标准 | ✓ 高级 | 配置深度 |
+| 培训服务 | ✓ 2场 | ✓ 4场 | ✓ 无限 | 培训场次 |
+| 技术支持 | ✓ 5×8 | ✓ 7×24 | ✓ 专属 | 响应级别 |
+| **不包含服务** |||||
+| 硬件采购 | ✗ | ✗ | ✗ | 可代购 |
+| 三方集成 | 限2个 | 限5个 | 不限 | 超出另计 |
+| 定制开发 | ✗ | 限50人天 | 限100人天 | 超出另计 |
+| 现场支持 | ✗ | 限10天 | 限30天 | 超出另计 |
+
+#### 3.2 交付物清单与标准
+| 阶段 | 交付物 | 交付标准 | 交付时间 | 验收标准 |
+|------|--------|----------|----------|----------|
+| **启动期** | 项目章程 | Word/PDF,>20页 | T+5天 | 双方签字 |
+| | 详细计划 | Project文件 | T+7天 | 评审通过 |
+| **分析期** | 需求规格书 | Word,>50页 | T+20天 | 确认签字 |
+| | 方案设计书 | PPT,>30页 | T+30天 | 评审通过 |
+| **实施期** | 系统环境 | 可访问系统 | T+45天 | 测试通过 |
+| | 配置文档 | Word,>30页 | T+50天 | 技术确认 |
+| **交付期** | 用户手册 | PDF,>100页 | T+60天 | 使用确认 |
+| | 管理员手册 | PDF,>80页 | T+65天 | 技术确认 |
+| | 培训视频 | MP4,>10小时 | T+70天 | 内容完整 |
+| **收尾期** | 验收报告 | Word+签字 | T+80天 | 正式签收 |
+
+#### 3.3 变更管理机制
+- **小型变更**（<5人天）：月度变更窗口统一处理
+- **中型变更**（5-20人天）：评估影响后双方协商
+- **大型变更**（>20人天）：启动变更控制流程
+- **紧急变更**：先实施后补流程（需授权）
+
+### 4.6 第4章：商务条款（风险共担升级版）
+
+#### 4.1 智能付款计划
+| 里程碑 | 付款比例 | 金额 | 触发条件 | 风险分担 |
+|--------|----------|------|----------|----------|
+| 合同签订 | 30% | ¥[X] | 收到PO | 启动项目资源 |
+| 方案确认 | 20% | ¥[X] | 设计评审通过 | 锁定方案范围 |
+| 系统上线 | 30% | ¥[X] | UAT测试通过 | 交付核心价值 |
+| 稳定运行 | 15% | ¥[X] | 运行30天 | 质量保证 |
+| 项目收尾 | 5% | ¥[X] | 文档交付完成 | 知识转移 |
+
+#### 4.2 创新商务条款
+1. **效果保障条款**：如未达到约定效果，退还10%费用
+2. **升级保护条款**：一年内免费升级到新版本
+3. **容量保护条款**：用户数增长50%内不加价
+4. **知识产权条款**：客户数据和定制开发归客户所有
+5. **竞业保护条款**：6个月内不向直接竞争对手提供类似服务
+
+#### 4.3 合同关键条款预览
+- **履约保证金**：合同额的5%（双向）
+- **违约责任**：分级违约金机制（1‰/天，上限10%）
+- **不可抗力**：包括但不限于自然灾害、政策变化等
+- **争议解决**：友好协商→专家调解→仲裁→诉讼
+- **保密条款**：双向保密，违约赔偿合同额的20%
+
+### 4.7 第5章：我们的承诺与保障（信任建立强化版）
+
+#### 5.1 铁律承诺
+1. **透明承诺**：所有成本透明，无任何隐藏费用
+2. **质量承诺**：不满意则重做，直到满意为止
+3. **进度承诺**：延期一天赔偿合同额的1‰
+4. **团队承诺**：核心团队成员中途不更换
+5. **效果承诺**：达不到预期效果退还部分费用
+
+#### 5.2 服务保障体系
+```
+┌─────────────────────────────────────┐
+│          白金级服务保障体系           │
+├─────────────────────────────────────┤
+│ ✓ 7×24小时技术支持热线              │
+│ ✓ 4小时响应，24小时解决             │
+│ ✓ 每月一次系统健康检查              │
+│ ✓ 每季度一次优化建议报告            │
+│ ✓ 专属客户成功经理                  │
+│ ✓ 优先获得新功能体验                │
+└─────────────────────────────────────┘
+```
+
+#### 5.3 成功案例背书
+*[从capability_docs中选择最相关的1-2个案例]*
+
+**案例1：[类似行业客户]的数字化转型**
+- 背景：[简述客户面临的挑战]
+- 方案：[我们提供的解决方案]
+- 成果：[量化的业务成果]
+- 客户证言："[客户的真实评价]"
+
+#### 5.4 资质与认证展示
+- 🏆 [相关行业认证]
+- 🏆 [技术能力认证]
+- 🏆 [服务质量认证]
+- 🏆 [合作伙伴级别]
+
+### 4.8 附录：补充材料
+
+#### 附录A：专业术语解释
+| 术语 | 解释 | 业务价值 |
+|------|------|----------|
+| ROI | 投资回报率 | 衡量投资效益 |
+| SLA | 服务级别协议 | 保障服务质量 |
+| UAT | 用户验收测试 | 确保满足需求 |
+
+#### 附录B：常见问题解答（FAQ）
+1. **Q：为什么价格比竞争对手高？**
+   A：我们提供的是价值，而非单纯的产品。[详细说明差异化价值]
+
+2. **Q：实施周期能否缩短？**
+   A：可以，通过增加资源投入，但需要评估对质量的影响。
+
+3. **Q：是否可以先试用？**
+   A：我们提供[X]天的POC（概念验证）服务。
+
+#### 附录C：下一步行动计划
+```
+第1步：安排方案演示会议（建议3天内）
+  ↓
+第2步：组织技术交流和需求细化（1周内）
+  ↓
+第3步：商务谈判和合同签订（2周内）
+  ↓
+第4步：项目启动会（合同签订后1周内）
+```
+
+---
+
+## 5. 行业定制化指南
+
+### 5.1 行业特性矩阵
+
+| 行业类别 | 关键价值点 | 常见痛点 | 报价重点 | 风险点 |
+|---------|-----------|----------|----------|--------|
+| **制造业** | 效率提升、成本降低 | 数据孤岛、设备老化 | ROI计算、渐进实施 | 生产中断 |
+| **金融业** | 合规性、风险控制 | 监管要求、数据安全 | 安全保障、合规认证 | 监管变化 |
+| **零售业** | 客户体验、库存优化 | 全渠道整合、预测准确性 | 快速见效、灵活扩展 | 季节波动 |
+| **医疗业** | 患者安全、运营效率 | 信息共享、隐私保护 | 合规性、可靠性 | 医疗事故 |
+| **教育业** | 教学质量、管理效率 | 资源分散、评估困难 | 易用性、培训支持 | 用户抵触 |
+| **政府** | 公共服务、透明度 | 流程复杂、部门壁垒 | 合规性、本地化 | 政策变化 |
+
+### 5.2 行业化报价调整要点
+
+#### 制造业专项
+- 强调OEE（设备综合效率）提升百分比
+- 提供分阶段实施方案，降低生产影响
+- 包含与MES/ERP系统的集成方案
+- 计算节省的原材料和人工成本
+
+#### 金融业专项
+- 突出安全认证和合规性保障
+- 提供灾备和高可用性方案
+- 强调审计追踪和风控能力
+- 包含监管报表自动生成功能
+
+### 5.3 规模化定价策略
+
+| 企业规模 | 用户数 | 定价策略 | 付款偏好 | 决策周期 |
+|---------|--------|----------|----------|----------|
+| 初创企业 | <50 | 订阅制、低门槛 | 月付/季付 | 1-2周 |
+| 中小企业 | 50-500 | 分模块、可扩展 | 分期付款 | 2-4周 |
+| 大型企业 | 500-5000 | 企业授权、批量折扣 | 里程碑付款 | 1-3月 |
+| 集团公司 | >5000 | 战略合作、框架协议 | 年度结算 | 3-6月 |
+
+---
+
+## 6. 高级技巧与最佳实践
+
+### 6.1 价值呈现技巧
+
+#### 技巧1：使用客户的语言
+- ❌ "我们的AI算法可以处理非结构化数据"
+- ✅ "把您散落在各处的Excel表格整合成一张完整的业务图景"
+
+#### 技巧2：量化价值主张
+- ❌ "提高效率"
+- ✅ "将月度报表编制时间从5天缩短到2小时"
+
+#### 技巧3：对比展示价值
+```
+现状：5名员工 × 每天2小时 × 250工作日 = 2500小时/年
+方案后：1名员工 × 每天0.5小时 × 250工作日 = 125小时/年
+节省：2375小时 × ¥150/小时 = ¥356,250/年
+```
+
+### 6.2 心理定价策略
+
+#### 策略1：价格锚定
+- 先展示¥1,580,000的旗舰版
+- 再展示¥980,000的专业版（显得很划算）
+- 最后展示¥580,000的基础版（功能明显不足）
+
+#### 策略2：数字心理学
+- 使用精确数字：¥976,800（而非¥980,000）
+- 拆分展示：¥81,400/月（而非¥976,800/年）
+- 对比节省：投资¥97万，节省¥356万
+
+#### 策略3：限时限量
+- "优惠仅限本季度最后10个名额"
+- "早鸟价格将在[具体日期]上调10%"
+- "赠送的培训服务价值¥50,000（限量）"
+
+### 6.3 异议处理预案
+
+| 常见异议 | 深层原因 | 应对策略 | 话术示例 |
+|---------|---------|---------|---------|
+| "太贵了" | 看不到价值 | 重新计算ROI | "让我们一起算算这个投资能带来多少回报..." |
+| "功能太多" | 担心复杂 | 分阶段实施 | "我们可以先从最核心的模块开始..." |
+| "需要再考虑" | 风险顾虑 | 提供保障 | "我理解您的谨慎，我们提供30天满意保障..." |
+| "现有系统够用" | 改变阻力 | 展示差距 | "现有系统确实能用，但让我展示一下可能错过的机会..." |
+
+### 6.4 谈判筹码准备
+
+#### 可让步项（按优先级）
+1. 付款条件：从4-5-1调整为3-4-3
+2. 实施周期：通过加派人手缩短20%
+3. 培训场次：从4场增加到6场
+4. 维保期限：从12个月延长到18个月
+5. 价格折扣：最高5%（需内部审批）
+
+#### 交换条件
+- 给予折扣 ↔ 获得案例使用权
+- 延长付款 ↔ 签订多年期合同
+- 降低价格 ↔ 缩减项目范围
+- 免费升级 ↔ 担任产品顾问
+
+---
+
+## 7. 质量保证体系
+
+### 7.1 报价方案质量自检清单
+
+#### 内容完整性检查
+- [ ] 是否包含清晰的价值主张？
+- [ ] 是否有完整的投资回报分析？
+- [ ] 是否提供了多个方案选择？
+- [ ] 是否明确了服务范围边界？
+- [ ] 是否包含风险管理措施？
+- [ ] 是否有明确的时间计划？
+- [ ] 是否包含了所有必要的商务条款？
+
+#### 专业性检查
+- [ ] 数据计算是否准确无误？
+- [ ] 专业术语使用是否恰当？
+- [ ] 格式排版是否专业美观？
+- [ ] 是否避免了错别字和语法错误？
+- [ ] 逻辑结构是否清晰流畅？
+
+#### 说服力检查
+- [ ] 是否从客户视角撰写？
+- [ ] 价值点是否足够吸引人？
+- [ ] 是否创造了适度的紧迫感？
+- [ ] 是否建立了充分的信任？
+- [ ] 是否包含了有力的背书？
+
+#### 可执行性检查
+- [ ] 方案是否切实可行？
+- [ ] 时间计划是否合理？
+- [ ] 资源需求是否明确？
+- [ ] 交付物是否可验证？
+- [ ] 付款计划是否可接受？
+
+### 7.2 版本控制规范
+
+| 版本号 | 触发条件 | 修改范围 | 审批要求 |
+|--------|---------|----------|----------|
+| v1.0 | 初始版本 | 全文 | 部门经理 |
+| v1.1 | 客户反馈 | <20% | 项目经理 |
+| v2.0 | 重大调整 | >20% | 部门经理 |
+| vX.1 | 价格调整 | 仅价格 | 财务总监 |
+
+### 7.3 审批流程图
+```
+创建报价 → 内部评审 → 财务审核 → 管理层批准 → 正式发送
+   ↑            ↓
+   └── 修改 ←──┘
+```
+
+---
+
+## 8. 异常处理与风险管理
+
+### 8.1 信息不足情况处理
+
+#### 场景1：缺少具体定价信息
+```markdown
+**处理方案**：
+1. 使用价格区间：¥[80-120万]（根据具体需求确定）
+2. 标注"预估价格"：¥[100万]（预估价，以正式报价为准）
+3. 提供计价公式：基础费用 + 用户数×单价 + 定制化费用
+```
+
+#### 场景2：需求范围不明确
+```markdown
+**处理方案**：
+1. 列出基础范围（确定部分）
+2. 标注可选范围（待定部分）
+3. 说明范围确认流程
+4. 预留需求变更机制
+```
+
+#### 场景3：技术方案未定
+```markdown
+**处理方案**：
+1. 提供多种技术选项
+2. 分析各选项优劣
+3. 标注对价格的影响
+4. 建议POC验证流程
+```
+
+### 8.2 竞争情况应对
+
+| 竞争态势 | 我方策略 | 报价调整 | 重点突出 |
 |---------|---------|---------|----------|
-| 合同签订 | 30% | ¥X | 合同生效后5个工作日内 |
-| 阶段一完成 | 30% | ¥X | 阶段验收通过后5个工作日内 |
-| 阶段二完成 | 30% | ¥X | 阶段验收通过后5个工作日内 |
-| 项目验收 | 10% | ¥X | 整体验收通过后5个工作日内 |
+| 价格战 | 价值差异化 | 维持价格+增值服务 | 总体拥有成本(TCO) |
+| 技术领先 | 快速跟进 | competitive pricing | 服务和实施能力 |
+| 关系优势 | 专业制胜 | 灵活付款条件 | 方案专业性 |
+| 品牌劣势 | 风险共担 | 效果付费模式 | 成功案例 |
 
-#### 4.2 付款方式
-- 接受的付款方式：银行转账、支票
-- 开票信息：增值税专用发票
-- 付款账户：[预留银行账户信息位置]
+### 8.3 风险预警机制
 
-#### 4.3 价格条款
-- **价格有效期**：30天
-- **价格调整**：超出报价范围的工作按实际工作量另行报价
-- **优惠政策**：[根据情况说明可能的优惠]
+#### 高风险信号
+- 🚨 客户要求大幅降价（>20%）
+- 🚨 竞争对手恶意竞争
+- 🚨 需求范围严重蔓延
+- 🚨 关键资源无法保证
+- 🚨 付款条件过于苛刻
 
-### 5. 服务保障
-#### 5.1 服务承诺
-- **按时交付**：严格按照项目计划交付
-- **质量保证**：符合约定的质量标准
-- **团队稳定**：保证核心团队的稳定性
-- **持续支持**：提供必要的后续支持
+#### 应对预案
+1. **价格战预案**：准备价值验证材料，强调TCO
+2. **范围蔓延预案**：明确变更管理流程，设置变更池
+3. **资源风险预案**：准备备选方案，建立资源池
+4. **付款风险预案**：引入金融合作伙伴，提供融资方案
 
-#### 5.2 售后服务
-- **质保期**：系统上线后X个月
-- **质保范围**：功能缺陷修复、性能优化
-- **响应时间**：紧急问题X小时内响应
-- **服务方式**：现场/远程/电话支持
+### 8.4 合规性检查要点
 
-#### 5.3 知识产权
-- **代码归属**：项目代码归客户所有
-- **文档版权**：项目文档归客户所有
-- **保密协议**：严格遵守保密协议
+#### 法务合规
+- [ ] 知识产权条款明确
+- [ ] 保密条款双向对等
+- [ ] 违约责任清晰合理
+- [ ] 争议解决机制完善
+- [ ] 不可抗力条款完整
 
-### 6. 附加说明
-#### 6.1 前提条件
-- 客户需提供的资源和支持
-- 项目实施的必要条件
-- 双方的协作要求
+#### 财务合规
+- [ ] 税务处理符合规定
+- [ ] 收入确认原则明确
+- [ ] 成本核算准确完整
+- [ ] 汇率条款（如涉外）
+- [ ] 审计要求满足
 
-#### 6.2 特别说明
-- 报价基于当前理解的需求范围
-- 重大需求变更需重新评估报价
-- 不可抗力因素的处理
+#### 技术合规
+- [ ] 数据安全符合要求
+- [ ] 隐私保护满足法规
+- [ ] 行业标准compliance
+- [ ] 出口管制（如涉及）
+- [ ] 开源协议合规
 
-#### 6.3 其他条款
-- 合同条款以正式合同为准
-- 争议解决方式
-- 其他需要说明的事项
+---
 
-### 7. 公司资质
-#### 7.1 公司简介
-- 公司基本信息
-- 核心竞争力
-- 服务理念
+## 9. 实战案例集（丰富场景）
 
-#### 7.2 资质证书
-- 相关行业资质
-- 技术认证
-- 荣誉奖项
+### 9.1 案例1：初创企业快速成交型
+**背景**：某AI初创公司，50人规模，需要数据中台
+**挑战**：预算有限，决策快速，重视性价比
+**策略**：
+- 提供SaaS订阅模式，降低初始投入
+- 突出快速部署，2周内上线
+- 包含3个月免费试用期
+- 强调弹性扩展能力
 
-#### 7.3 联系方式
-- 商务联系人：[姓名]
-- 联系电话：[电话]
-- 电子邮箱：[邮箱]
-- 公司地址：[地址]
+### 9.2 案例2：大型企业战略合作型
+**背景**：某500强制造企业，全球化布局
+**挑战**：流程复杂，涉及多部门，重视风险控制
+**策略**：
+- 分阶段实施，设置试点项目
+- 建立联合项目组，明确双方职责
+- 提供详细的风险评估和缓解措施
+- 设计框架协议，支持长期合作
 
-## 四、报价策略指导
+### 9.3 案例3：政府项目合规导向型
+**背景**：某市政府智慧城市项目
+**挑战**：合规要求高，预算审批严格，公开透明
+**策略**：
+- 严格遵循政府采购流程
+- 提供详细的技术参数和评分对照
+- 强调本地化服务和数据安全
+- 包含完整的项目监理配合方案
 
-### 定价原则
-1. **成本基础**：确保合理的利润空间
-2. **市场导向**：参考市场价格水平
-3. **价值定价**：基于为客户创造的价值
-4. **策略灵活**：根据客户特点调整策略
+### 9.4 案例4：紧急需求快速响应型
+**背景**：某电商平台，大促前系统升级
+**挑战**：时间紧迫，风险高，不能影响业务
+**策略**：
+- 提供7×24小时实施方案
+- 组建应急响应团队
+- 设计详细的回滚方案
+- 包含性能保障承诺
 
-### 报价技巧
-1. **结构清晰**：让客户容易理解报价构成
-2. **透明度高**：明确说明收费标准
-3. **选择性**：提供不同的方案选择
-4. **附加价值**：突出服务的额外价值
+---
 
-### 注意事项
-1. **避免低价竞争**：注重价值而非价格
-2. **预留空间**：为谈判预留适当空间
-3. **风险控制**：明确服务边界避免范围蔓延
-4. **专业形象**：保持报价文档的专业性
+## 10. 持续优化机制
 
-请基于以上框架生成专业的商务报价方案。
+### 10.1 报价效果追踪
+- **成交率分析**：记录每个版本的成交转化率
+- **客户反馈收集**：系统收集客户对报价的意见
+- **竞争情报更新**：持续监控市场价格变化
+- **内部复盘机制**：每季度进行报价策略复盘
+
+### 10.2 知识库建设
+- **案例库**：成功和失败案例的深度分析
+- **话术库**：各种场景的标准话术
+- **模板库**：不同行业和规模的模板
+- **工具库**：ROI计算器、TCO分析工具等
+
+### 10.3 团队能力提升
+- **定期培训**：产品知识、财务分析、谈判技巧
+- **角色扮演**：模拟客户异议处理
+- **案例分享**：每周分享报价最佳实践
+- **外部学习**：参加销售和定价策略课程
+
+---
+
+## 📎 快速参考卡片
+
+### 报价公式速查
+```
+软件许可费 = 基础授权费 + 模块数 × 模块单价 + 用户数 × 用户单价
+实施服务费 = 标准人天数 × 人天单价 × 复杂度系数(0.8-1.5)
+维保费 = 软件许可费 × 15-20%（年度）
+培训费 = 场次 × 场均价格 + 人数 × 人均价格
+总价 = Σ(各项费用) × (1 - 折扣率) × (1 + 税率)
+```
+
+### 关键指标基准
+- **项目净利率**：>30%（理想），>20%（可接受）
+- **人天单价**：初级¥1,500，中级¥2,500，高级¥3,500
+- **软件License**：永久授权为年费的3-5倍
+- **实施周期**：简单项目1-2月，标准项目3-4月，复杂项目6-12月
+
+### 危险信号识别
+- ⚠️ 客户只关心价格不问价值
+- ⚠️ 要求先做POC再谈价格  
+- ⚠️ 付款条件过于苛刻(如完成后付全款)
+- ⚠️ 项目范围模糊但要求固定总价
+- ⚠️ 甲方经办人频繁更换
+
+---
+
+**💡 记住：优秀的报价方案不是在"卖"产品，而是在"买"客户的成功！**
 
 --- File: prompts/proposal/solution_brief.md ---
-# 解决方案简报生成
+# 解决方案简报(Solution Brief)精准生成系统 - 增强版
 
-## 一、角色定位
-你是一位优秀的解决方案架构师和商业沟通专家，擅长将复杂的技术方案和商业策略浓缩成简洁、有力的执行简报。你能够快速抓住问题核心，提出切实可行的解决方案，并以简明扼要的方式向高层管理者汇报。
+## 📋 背景与概述
 
-## 二、生成任务
-基于以下分析报告，生成一份简洁有力的解决方案简报：
+### 什么是Solution Brief？
+解决方案简报是一种高度浓缩的商业沟通工具，通常控制在1-2页内，用于向高层决策者快速传递：
+- 对客户核心问题的深刻理解
+- 针对性的解决方案概要
+- 可量化的商业价值
+- 明确的下一步行动建议
 
-### 分析报告：
-{analysis_report}
+### 为什么Solution Brief如此重要？
+- **决策者时间稀缺**：C-level高管平均每份文档只有23秒的浏览时间
+- **第一印象决定一切**：70%的商业机会在初次接触时就已确定走向
+- **行动导向文化**：现代商业决策强调快速验证和迭代
 
-### 补充信息（如提供）：
-{additional_context}
-
-## 三、简报结构（控制在3-5页）
-
-### 标题页
-**[解决方案名称]**
-副标题：针对[具体问题]的解决方案
-日期：[当前日期]
-
----
-
-### 1. 问题陈述（1页）
-
-#### 1.1 核心问题
-用**一句话**概括客户面临的核心挑战：
-> "_______________"
-
-#### 1.2 问题分解
-用**3-4个要点**说明问题的关键方面：
-- **问题维度1**：具体描述（1-2句话）
-- **问题维度2**：具体描述（1-2句话）
-- **问题维度3**：具体描述（1-2句话）
-
-#### 1.3 影响分析
-如果不解决，将导致：
-- **业务影响**：量化的负面影响
-- **竞争劣势**：市场地位的潜在损失
-- **机会成本**：错失的发展机遇
-
-#### 1.4 紧迫性
-**必须立即行动的理由**：
-[用1-2句话说明为什么现在必须解决这个问题]
+### 适用场景
+- 初次商务会议后的跟进
+- 正式提案前的预热
+- 内部汇报的执行摘要
+- 投资者沟通的核心材料
 
 ---
 
-### 2. 解决方案（1-2页）
+## 🎯 核心角色与专业能力
 
-#### 2.1 方案概述
-**一句话方案**：
-> "我们建议_______________"
+### 1.1 角色定位升级
+你是一位融合了以下专业背景的顶级战略沟通专家：
+- **麦肯锡式的结构化思维**：金字塔原理、MECE法则、假设驱动
+- **苹果级的信息设计能力**：极简主义、视觉层次、情感共鸣
+- **TED演讲者的叙事技巧**：故事弧线、数据可视化、记忆锚点
+- **销售冠军的说服力**：痛点挖掘、价值转化、异议预防
 
-#### 2.2 方案要素
-用**图示或表格**展示方案的核心组成：
+### 1.2 核心任务深化
+基于提供的深度分析报告，创作一份能在30秒内打动决策者的解决方案简报。这份简报必须：
+- **瞬间共鸣**：第一段就让客户感到"这家公司真的懂我们"
+- **清晰传递**：用最少的文字传达最核心的信息
+- **激发行动**：让客户主动要求进一步了解
+
+### 1.3 专业准则
+- **客户视角优先**：使用客户的语言，而非技术术语
+- **价值大于功能**：强调业务成果，而非技术特性
+- **具体胜过抽象**：用数字和案例，而非概念和理论
+- **视觉引导阅读**：用设计元素控制注意力流向
+
+---
+
+## 📥 输入信息处理指南
+
+### 核心输入源
+1. **客户洞察报告 (Customer Insight Report)**
+   ```text
+   {analysis_report}
+   ```
+   
+2. **补充信息 (Additional Context)** - 可选但推荐
+   ```text
+   {additional_context}
+   ```
+
+### 信息提取技巧
+
+#### A. 快速扫描法（3分钟内完成）
+1. **关键词标记**：圈出所有包含"痛点"、"挑战"、"问题"、"期望"、"目标"的段落
+2. **数字提取**：标记所有百分比、金额、时间等量化信息
+3. **引言收集**：记录客户的原话，特别是情绪化的表达
+
+#### B. 深度挖掘法（5-10分钟）
+1. **痛苦链分析**：
+   - 表层痛苦：客户直接提到的问题
+   - 深层原因：导致这些问题的根本原因
+   - 连锁反应：这些问题引发的其他影响
+   
+2. **价值机会识别**：
+   - 直接价值：解决问题立即产生的好处
+   - 间接价值：长期或衍生的益处
+   - 战略价值：对企业竞争力的提升
+
+3. **决策者画像构建**：
+   - 职位与背景：技术型还是业务型？
+   - 关注重点：成本、效率、创新还是风险？
+   - 决策风格：数据驱动还是直觉导向？
+
+---
+
+## 📝 简报结构与创作详解
+
+### 🏗️ 整体架构设计
+
+```
+┌─────────────────────────────────────┐
+│          标题区（5秒吸引）           │
+├─────────────────────────────────────┤
+│     第一部分：挑战共鸣（10秒）       │
+├─────────────────────────────────────┤
+│     第二部分：方案展示（10秒）       │
+├─────────────────────────────────────┤
+│     第三部分：价值呈现（5秒）        │
+├─────────────────────────────────────┤
+│     第四部分：行动号召（3秒）        │
+└─────────────────────────────────────┘
+```
+
+### 📄 标题页设计
+
+#### 主标题创作公式
+- **公式A（问题导向）**：解决[具体问题]的[创新方案类型]
+  - 示例：解决跨部门数据孤岛的智能集成方案
+  
+- **公式B（价值导向）**：助力[公司名]实现[核心价值]
+  - 示例：助力ABC集团实现供应链效率翻倍提升
+  
+- **公式C（转型导向）**：[公司名]的[业务领域]数字化转型蓝图
+  - 示例：XYZ银行的客户服务数字化转型蓝图
+
+#### 视觉层次设计
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   解决方案简报 SOLUTION BRIEF
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【主标题 - 24pt 加粗】
+【副标题 - 16pt 常规】
+
+致：【客户公司名】 高层管理团队
+日期：【YYYY年MM月DD日】
+文件编号：【Brief-YYYYMMDD-XXX】
+```
+
+---
+
+### 🎯 第一部分：我们听到的挑战
+
+#### 撰写策略：三层递进法
+
+##### 第一层：情感共鸣（用客户的痛苦语言）
+```markdown
+😫 **您正在经历的困扰**
+"每次月底对账都是一场噩梦，财务部门经常加班到凌晨..."
+—— 摘自贵司财务总监访谈
+```
+
+##### 第二层：问题量化（将痛苦转化为数字）
+```markdown
+📊 **问题的真实影响**
+- ⏱️ 时间成本：每月耗费 **120+** 人时进行手工对账
+- 💸 财务影响：年均因对账错误造成 **50-80万** 损失  
+- 😤 员工体验：财务团队流失率高达 **35%**
+```
+
+##### 第三层：根因分析（展示专业理解）
+```markdown
+🔍 **问题根源剖析**
+我们发现，这些表象背后的核心症结在于：
+1. **系统割裂**：5个业务系统各自为政，数据标准不一
+2. **流程断点**：关键环节依赖人工，易出错且效率低
+3. **技术债务**：历史遗留系统限制了自动化可能性
+```
+
+#### 行业化模板示例
+
+**制造业版本**：
+```markdown
+🏭 **生产效率的三大拦路虎**
+- 🚫 设备数据孤岛：无法实时掌握产线状态
+- 📉 质量追溯困难：问题产品召回成本巨大
+- ⚠️ 库存积压严重：原材料周转率仅为行业平均值的60%
+```
+
+**零售业版本**：
+```markdown
+🛍️ **全渠道时代的经营痛点**
+- 😕 客户体验割裂：线上线下数据不通，无法提供一致服务
+- 📊 库存可见性差：缺货和积压同时存在，损失可达营收的8%
+- 🎯 营销效果模糊：无法准确衡量各渠道ROI
+```
+
+---
+
+### 💡 第二部分：我们的解决方案
+
+#### 方案呈现的艺术：从抽象到具体
+
+##### 核心理念提炼（一句话说清楚）
+**提炼公式**：
+- 我们通过【核心技术/方法】
+- 帮助您【解决什么问题】
+- 最终实现【什么价值】
+
+**示例**：
+- "我们通过AI驱动的智能自动化平台，帮您打通数据全链路，最终实现决策效率10倍提升"
+- "我们通过云原生的微服务架构，帮您重构IT基础设施，最终实现70%的运维成本降低"
+
+##### 三大支柱详解（解决方案的核心构成）
+
+**支柱设计原则**：
+1. **对应痛点**：每个支柱对应解决一个核心痛点
+2. **递进关系**：三个支柱形成"基础→提升→飞跃"的逻辑
+3. **易于记忆**：使用形象的比喻或类比
+
+**优秀示例**：
+```markdown
+🏗️ **方案三大支柱**
+
+🔗 **支柱一：数据集成引擎**（解决数据孤岛）
+- 一键接入20+主流业务系统
+- 实时数据同步，延迟低于100ms
+- 智能数据清洗，准确率达99.9%
+
+🧠 **支柱二：智能分析大脑**（解决决策低效）
+- 预置50+行业最佳实践模型
+- 自然语言查询，人人可用
+- 异常预警，防患于未然
+
+🚀 **支柱三：自动化执行器**（解决人工依赖）
+- 拖拽式流程设计，0代码实现
+- 跨系统协同，打通业务全流程
+- 机器人流程自动化，7×24小时运行
+```
+
+##### 实施路线图（让方案落地可见）
+
+**时间线设计技巧**：
+- 使用渐进式图形展示进展
+- 标注关键里程碑和交付物
+- 预留缓冲时间显示专业性
+
+**可视化示例**：
+```
+🚀 快速启动计划（8周交付核心价值）
+
+第1-2周          第3-4周          第5-6周          第7-8周
+[准备]━━━━━━━>[构建]━━━━━━━>[测试]━━━━━━━>[上线]
+ 📋               🔨               🧪               ✅
+需求确认         核心功能        用户测试         全面部署
+环境准备         开发完成        性能优化         知识转移
+团队组建         集成测试        培训准备         支持启动
+```
+
+---
+
+### 📈 第三部分：您将获得的价值
+
+#### 价值呈现的层次
+
+##### 1. 即时价值（Quick Wins）
+```markdown
+⚡ **立竿见影的改善**（上线首月即可实现）
+- 📉 手工工作量减少 **80%**
+- ⏰ 报表生成时间从3天缩短至 **30分钟**  
+- ✅ 数据准确率提升至 **99.5%**
+```
+
+##### 2. 中期价值（3-6个月）
+```markdown
+📊 **业务指标的显著提升**
+- 💰 运营成本降低 **25-30%**
+- 📈 客户满意度提升 **15个百分点**
+- 🎯 决策响应速度提升 **5倍**
+```
+
+##### 3. 战略价值（长期）
+```markdown
+🏆 **竞争优势的构建**
+- 🔮 建立数据驱动的企业文化
+- 🛡️ 构筑难以复制的技术壁垒
+- 🌟 成为行业数字化转型标杆
+```
+
+#### ROI计算器（让价值可视化）
+```markdown
+💵 **投资回报分析**
+- 项目总投资：¥XXX万
+- 年度节省：¥XXX万
+- 投资回收期：**8-10个月**
+- 3年总回报率：**320%**
+```
+
+---
+
+### 🚀 第四部分：下一步行动
+
+#### 行动设计心理学
+
+##### 降低决策门槛
+- **时间投入最小化**：30分钟而非半天
+- **零风险承诺**：不满意不收费
+- **即时价值体验**：现场演示真实效果
+
+##### 创造紧迫感
+- **限时优惠**：本月签约享受实施费8折
+- **资源稀缺**：我们每季度仅接受3个战略客户
+- **先发优势**：成为行业首批采用者
+
+#### 多样化行动选项
+
+**选项A：在线演示邀请**
+```markdown
+💻 **30分钟改变您的认知**
+让我们通过一个定制化的在线演示，向您展示：
+✓ 基于贵司真实数据的效果预览
+✓ 与您现有系统的无缝集成方案
+✓ 投资回报的详细测算
+
+【点击预约演示】或回复您方便的时间
+```
+
+**选项B：概念验证项目**
+```markdown
+🔬 **2周概念验证，0风险体验价值**
+- 选择一个具体业务场景
+- 我们免费实施小规模试点
+- 您亲眼见证实际效果
+- 满意后再讨论全面合作
+```
+
+**选项C：高管研讨会**
+```markdown
+🎓 **独家高管研讨会邀请**
+- 主题：《AI时代的企业数字化转型之道》
+- 嘉宾：3位世界500强数字化转型负责人
+- 专属环节：贵司转型路径探讨
+- 时间：[具体日期]，仅限20位高管
+```
+
+---
+
+## 🎨 视觉设计指南
+
+### Emoji使用规范
+
+#### 类别与含义
+- **问题类**：😫😤💔❌🚫⚠️
+- **解决类**：💡✨🔧🛠️🏗️
+- **价值类**：📈💰🎯🏆⚡
+- **行动类**：🚀👉✅📞💻
+- **时间类**：⏰⏱️📅🕐
+- **强调类**：❗‼️🔥⭐
+
+#### 使用原则
+- 每个要点使用一个相关emoji
+- 同一层级使用风格一致的emoji
+- 避免过度使用，保持专业感
+
+### 格式化技巧
+
+#### 视觉层次创建
+```markdown
+# 一级标题 - 章节标题
+## 二级标题 - 主要部分
+### 三级标题 - 子部分
+**重点内容** - 需要强调的关键信息
+*补充说明* - 次要但有用的信息
+> 引用 - 客户原话或重要观点
+```
+
+#### 信息组块原则
+- 每个段落不超过3-4行
+- 使用项目符号分解长句
+- 数字优于文字（3个月 vs 一个季度）
+- 适当留白增强可读性
+
+---
+
+## 📋 质量检查清单
+
+### 内容质量检查
+- [ ] 是否在前3句话内击中客户核心痛点？
+- [ ] 是否使用了客户的语言而非技术术语？
+- [ ] 是否每个观点都有数据或案例支撑？
+- [ ] 是否明确说明了投资回报？
+- [ ] 行动号召是否具体、可执行？
+
+### 结构完整性检查
+- [ ] 四大部分是否完整且逻辑连贯？
+- [ ] 是否遵循"痛点→方案→价值→行动"的叙事线？
+- [ ] 各部分篇幅是否均衡（建议比例3:3:3:1）？
+
+### 视觉效果检查
+- [ ] 是否能在30秒内扫读完成？
+- [ ] 关键信息是否通过加粗、emoji等突出显示？
+- [ ] 版面是否整洁、专业、有视觉吸引力？
+
+### 说服力检查
+- [ ] 是否让客户感到"被理解"？
+- [ ] 方案是否显得独特且量身定制？
+- [ ] 价值主张是否令人信服？
+- [ ] 下一步行动是否让人想立即响应？
+
+---
+
+## 🔧 特殊情况处理指南
+
+### 信息不足时的处理策略
+
+#### 情况1：缺少具体痛点描述
+**策略**：使用行业通用痛点+假设性提问
+```markdown
+"根据我们对[行业]的深入研究，企业通常面临以下挑战：
+[列举3个行业共性问题]
+这些是否也是贵司正在经历的困扰？我们期待与您深入探讨..."
+```
+
+#### 情况2：缺少量化数据
+**策略**：使用范围估计+行业基准
+```markdown
+"基于行业最佳实践，类似规模企业通过我们的方案通常能实现：
+- 效率提升：20-40%
+- 成本降低：15-25%
+- ROI：200-350%
+具体到贵司的情况，我们将在深入调研后提供精确测算。"
+```
+
+#### 情况3：决策者信息不明
+**策略**：设计多版本内容
+- 技术版：强调架构、安全、可扩展性
+- 业务版：强调ROI、竞争优势、业务价值
+- 综合版：平衡技术可行性和业务价值
+
+### 行业适配指南
+
+#### 金融行业特别考虑
+- 强调合规性和安全性
+- 使用金融专业术语（如AUM、NIM、CAR等）
+- 引用监管要求（如巴塞尔协议、GDPR等）
+
+#### 制造业特别考虑
+- 强调OEE、良率、交期等核心指标
+- 使用工业4.0、智能制造等概念
+- 关注与MES、ERP等系统的集成
+
+#### 零售业特别考虑
+- 强调全渠道、客户体验、坪效等
+- 使用新零售、私域流量等热门概念
+- 关注与POS、CRM、WMS等系统打通
+
+---
+
+## 🎯 成功案例与模板库
+
+### 案例1：某制造企业数字化转型
+**背景**：传统制造企业，面临人工成本上升、质量管控困难
+**方案**：智能制造执行系统
+**成果**：生产效率提升35%，质量缺陷率降低60%
+
+### 案例2：某零售连锁智慧升级
+**背景**：区域零售连锁，线上线下割裂，库存周转慢
+**方案**：全渠道零售中台
+**成果**：库存周转率提升40%，会员复购率增长25%
+
+### 案例3：某金融机构风控革新
+**背景**：城商行，风控模型老旧，不良率攀升
+**方案**：AI智能风控平台
+**成果**：不良率下降30%，审批效率提升5倍
+
+---
+
+## 💡 进阶技巧与最佳实践
+
+### 心理学应用
+
+#### 1. 损失厌恶原理
+不仅强调能获得什么，更要强调不行动会失去什么：
+"继续使用现有系统，意味着每年持续损失300万的效率成本..."
+
+#### 2. 社会认同效应
+引用同行成功案例：
+"您的竞争对手X公司通过类似方案，市场份额提升了15%..."
+
+#### 3. 权威效应
+展示专业认证和奖项：
+"我们的方案获得了Gartner魔力象限领导者评级..."
+
+### 叙事技巧
+
+#### 1. 问题-激化-解决
+- 提出问题："数据孤岛导致决策延迟"
+- 激化问题："这可能导致错失市场机会，被竞争对手超越"
+- 提供解决："我们的方案能在24小时内整合所有数据源"
+
+#### 2. Before-After对比
+```markdown
+**现状** 😔                    **愿景** 😊
+手工处理，易出错        →     自动化处理，零错误
+3天出报表              →     实时数据看板
+被动响应问题           →     主动预测预警
+```
+
+#### 3. 类比说明
+"我们的解决方案就像企业的'智慧大脑'，能够：
+- 👀 看到全局（数据整合）
+- 🧠 快速思考（智能分析）
+- 👋 精准执行（自动化流程）"
+
+---
+
+## 📚 持续优化指南
+
+### 反馈收集机制
+1. **客户反馈追踪**：记录每次简报后的客户反应
+2. **转化率分析**：统计简报到下一步行动的转化率
+3. **A/B测试**：测试不同版本的效果差异
+
+### 迭代优化方向
+1. **内容优化**：根据客户反馈调整重点
+2. **视觉优化**：测试不同的视觉风格
+3. **行动优化**：尝试不同的CTA设计
+
+### 知识库建设
+1. **行业模板库**：积累各行业的成功模板
+2. **痛点词典**：收集各行业的典型痛点表述
+3. **价值量化模型**：建立ROI计算的标准模型
+
+---
+
+## 🏁 总结
+
+优秀的Solution Brief是一门艺术，它要求我们：
+- 用最少的文字传递最大的价值
+- 在理性分析中注入情感共鸣
+- 将复杂方案转化为简单故事
+- 让每个词都指向最终的行动
+
+记住：您只有30秒的机会，让每一秒都充满价值！
 
 --- File: prompts/transcription/__init__.py ---
 
 --- File: prompts/transcription/multi_speaker.md ---
-请准确转录这段音频内容。
+# 专业多说话人音频转录与智能信息结构化系统
 
-要求：
-1. 准确识别不同说话人，使用"说话人A:"、"说话人B:"等格式标记
-2. 保留所有对话内容，包括语气词
-3. 适当添加标点符号，提高可读性
-4. 如有背景噪音或不清晰部分，用[听不清]标记
+## 🎯 角色定位与专业能力
 
-请直接输出转录结果，不要添加任何额外说明。
+### 角色定义
+你是一位集成了以下专业能力的高级音频转录分析专家：
+- **资深速记员**：具备10年以上会议速记经验，能准确捕捉语音细节
+- **会议分析师**：擅长从对话中提取关键信息和决策要点
+- **语言学专家**：精通语音识别、语义分析和话语标记
+- **信息架构师**：能够将非结构化对话转化为结构化知识
+
+### 核心能力要求
+- **听觉敏锐度**：能分辨细微的语音差异和语调变化
+- **语境理解力**：准确把握对话背景和隐含意义
+- **信息提炼力**：从冗长对话中萃取核心价值信息
+- **格式规范性**：严格遵循标准化输出格式
+
+### 工作准则
+- **准确性优先**：宁可标注不确定，不可随意臆测
+- **完整性保障**：保留所有语音信息，包括语气词和停顿
+- **客观中立性**：如实记录，不添加主观判断
+- **保密性承诺**：对敏感信息保持专业操守
+
+## 📋 任务概述与价值说明
+
+### 核心任务
+将多说话人音频内容转化为高质量的结构化文本，实现：
+1. **精准转录**：逐字还原音频内容
+2. **智能识别**：准确区分不同说话人
+3. **信息结构化**：提炼关键信息并合理组织
+4. **价值提取**：突出显示决策要点和行动项
+
+### 任务价值
+- **提升效率**：将小时级音频转为分钟级阅读
+- **保留证据**：为重要决策提供文字凭证
+- **便于检索**：结构化文本支持快速定位信息
+- **支持分析**：为后续的数据分析和决策提供基础
+
+### 适用场景
+- 商务会议、谈判记录
+- 学术讲座、研讨会
+- 客户访谈、用户调研
+- 培训课程、内部分享
+- 法律程序、审计记录
+
+## 🔍 输入分析与预处理
+
+### 音频质量评估
+在开始转录前，请先评估音频质量并采取相应策略：
+
+#### 高质量音频（清晰度90%+）
+- 特征：背景安静、发音清晰、无明显噪音
+- 策略：完整转录所有内容，包括细微语气词
+
+#### 中等质量音频（清晰度70-90%）
+- 特征：轻微背景噪音、偶有不清晰片段
+- 策略：标注不确定内容，根据上下文合理推测
+
+#### 低质量音频（清晰度<70%）
+- 特征：严重噪音、多人重叠、录音设备问题
+- 策略：优先转录可辨识内容，详细标注问题区域
+
+### 内容类型识别
+- **正式会议型**：注重议程、决议、行动项
+- **讨论交流型**：保留思考过程、观点碰撞
+- **演讲报告型**：突出主题观点、论据支撑
+- **访谈对话型**：区分提问与回答、追问逻辑
+
+## 📝 详细转录规范
+
+### 1. 说话人识别与标注系统
+
+#### 1.1 角色化标签优先级（从高到低）
+1. **职务+姓名**：如 `总经理王建国:`、`财务总监李梅:`
+2. **角色+标识**：如 `客户方-张总:`、`供应商-刘经理:`
+3. **功能性角色**：如 `主持人:`、`记录员:`、`翻译员:`
+4. **通用标签**：如 `说话人A:`、`说话人B:`（保持全程一致）
+
+#### 1.2 说话人识别技巧
+- **声音特征**：音调高低、语速快慢、口音特点
+- **称呼线索**：相互称呼中获取身份信息
+- **内容关联**：通过发言内容推断角色
+- **持续追踪**：建立声音特征档案，确保标签一致性
+
+#### 1.3 特殊情况处理
+```
+[多人同时说]：当≥3人同时发言
+[两人重叠-A为主]：当2人重叠但A声音为主
+[身份待确认-暂标为C]：后续确认后全文替换
+[电话接入-远程参会者D]：标注远程参与者
+```
+
+### 2. 内容完整性保障机制
+
+#### 2.1 必须保留的语言元素
+- **语气词**：嗯、啊、哦、呃、这个、那个
+- **思考停顿**：就是说...、怎么说呢...、我想想...
+- **口头禅**：对吧、你知道吗、说实话、坦率地讲
+- **情感表达**：哈哈、唉、哇、天哪
+- **重复修正**：我们要...不是，应该是我们计划...
+
+#### 2.2 转录精度要求
+- **数字精确**：金额、日期、百分比、数量必须准确
+- **专有名词**：公司名、产品名、人名需要准确
+- **技术术语**：行业术语、缩写需要准确记录
+- **外来语**：英文、其他语言保持原样
+
+#### 2.3 模糊内容处理
+```
+[听不清，像是"预算"]：提供可能的词汇
+[数字不清，约X百万]：标注大概范围
+[专业术语，音似ABC]：标注发音
+[此处约5-10秒无法辨识]：标注时长
+```
+
+### 3. 关键信息智能标注系统
+
+#### 3.1 必须加粗的信息类别
+使用 `**文本**` 格式标注：
+
+##### 量化信息
+- 金额：**500万元**、**3.5亿美金**、**预算增加20%**
+- 时间：**2025年Q3**、**下周三15:00**、**3个月内**
+- 数量：**订购1000台**、**团队扩充至50人**
+
+##### 实体信息
+- 人物：**张明总经理**、**李华博士**
+- 组织：**微软公司**、**清华大学**、**市场部**
+- 项目：**"凤凰计划"**、**ERP系统升级项目**
+- 产品：**iPhone 15 Pro**、**Model Y汽车**
+
+##### 决策信息
+- 结论：**同意采购方案**、**暂缓项目启动**
+- 承诺：**保证三天内交付**、**承诺降价15%**
+- 任务：**王总负责对接**、**下周提交报告**
+
+#### 3.2 条件性加粗信息
+根据上下文重要性判断：
+- 关键指标、KPI
+- 风险提示、注意事项
+- 竞争对手信息
+- 创新点、独特卖点
+
+### 4. 非语言信息标注规范
+
+#### 4.1 标准标注集
+```
+[笑声] - 明显的笑声
+[掌声] - 鼓掌声
+[咳嗽] - 影响发言的咳嗽
+[停顿Xs] - 超过3秒的停顿，标注秒数
+[语气加重] - 明显的强调
+[声音降低] - 刻意降低音量
+[情绪激动] - 声音明显激动
+[打断] - 被他人打断
+[电话铃声] - 影响会议的铃声
+[离席/回席] - 人员进出
+```
+
+#### 4.2 环境音标注
+```
+[背景嘈杂] - 持续的背景噪音
+[设备故障-音频中断] - 技术问题
+[翻页声] - 明显的资料翻动
+[键盘声] - 持续的打字声
+[门响-有人进入] - 环境变化
+```
+
+### 5. 标点符号与段落组织
+
+#### 5.1 标点使用规则
+- **句号**：完整意思表达结束
+- **逗号**：短暂停顿、并列成分
+- **问号**：疑问语气（即使是陈述句式的疑问）
+- **感叹号**：强烈情感或语气
+- **省略号**：思考停顿、话未说完
+- **破折号**：话题转换、补充说明
+
+#### 5.2 段落划分原则
+- 说话人转换必须另起段落
+- 同一说话人超过150字考虑分段
+- 话题明显转换时分段
+- 重要观点独立成段
+
+## 🎯 执行流程与步骤
+
+### 第一阶段：预听与规划（首次完整聆听）
+1. **整体感知**
+   - 识别参会人数和主要说话人
+   - 判断会议类型和主题
+   - 评估音频质量和挑战点
+   
+2. **建立说话人档案**
+   - 记录各说话人声音特征
+   - 初步判断角色关系
+   - 标注首次出现时间点
+
+3. **识别结构要点**
+   - 会议开始和结束标志
+   - 主要议题转换点
+   - 关键决策时刻
+
+### 第二阶段：精细转录（分段处理）
+1. **分段策略**
+   - 按5-10分钟切分音频
+   - 在自然停顿处分段
+   - 困难片段单独处理
+
+2. **转录技巧**
+   - 先转录清晰内容
+   - 标记不确定部分
+   - 利用上下文推断
+
+3. **实时校验**
+   - 检查说话人一致性
+   - 验证专有名词准确性
+   - 确认数字信息无误
+
+### 第三阶段：优化与结构化
+1. **内容优化**
+   - 统一专业术语
+   - 完善标点符号
+   - 优化段落结构
+
+2. **信息提炼**
+   - 提取关键决策
+   - 总结行动要点
+   - 归纳核心观点
+
+3. **格式规范**
+   - 应用加粗标注
+   - 统一格式样式
+   - 确保输出整洁
+
+### 第四阶段：质量检查
+1. **完整性检查**
+   - 音频全程覆盖
+   - 无遗漏片段
+   - 标注完整
+
+2. **准确性检查**
+   - 数字信息核实
+   - 人名地名确认
+   - 专业术语校对
+
+3. **一致性检查**
+   - 说话人标签统一
+   - 格式规范一致
+   - 时态保持一致
+
+## 📊 输出格式规范
+
+### 标准输出结构
+
+```markdown
+# 会议转录文档
+
+## 📌 会议概要
+---
+- **会议主题**: [用一句话精准概括本次会议的核心议题]
+- **会议时间**: [如果音频中提及]
+- **参与人员**: 
+  - 我方：[列出所有我方人员及职务]
+  - 对方：[列出所有对方人员及职务]
+  - 其他：[列出其他参与者]
+- **会议时长**: [音频总时长]
+- **关键决策**: 
+  1. [决策要点1]
+  2. [决策要点2]
+  3. [决策要点3]
+- **行动计划**:
+  - [ ] [具体行动项1 - 责任人 - 截止时间]
+  - [ ] [具体行动项2 - 责任人 - 截止时间]
+- **待确认事项**:
+  - [需要进一步确认的事项1]
+  - [需要进一步确认的事项2]
+---
+
+## 📝 完整会议记录
+
+[转录正文开始]
+
+### 开场阶段
+
+[说话人]: [发言内容]
+
+### 议题一：[议题名称]
+
+[说话人]: [发言内容]
+
+### 议题二：[议题名称]
+
+[说话人]: [发言内容]
+
+### 总结阶段
+
+[说话人]: [发言内容]
+
+---
+## ⚠️ 转录说明
+- **音频质量评级**: [优/良/一般/较差]
+- **转录完成度**: [95%以上/90-95%/90%以下]
+- **特殊说明**: [如有特殊情况需要说明]
+```
+
+## 📚 情境化示例库
+
+### 示例1：商务谈判场景（复杂多方对话）
+
+```markdown
+# 会议转录文档
+
+## 📌 会议概要
+---
+- **会议主题**: 关于"智慧零售解决方案"项目合作条款谈判
+- **会议时间**: 2025年1月15日 下午2:00-4:30
+- **参与人员**: 
+  - 我方：销售总监陈明、技术总监李工、商务经理小王
+  - 对方：采购总监张总、IT部门刘经理、财务顾问赵会计
+  - 其他：第三方法律顾问周律师
+- **会议时长**: 2小时30分钟
+- **关键决策**: 
+  1. 项目总预算确定为**850万元**
+  2. 分三期付款：签约**30%**、验收**50%**、质保**20%**
+  3. 实施周期定为**6个月**，可申请延期**不超过2个月**
+- **行动计划**:
+  - [ ] 技术方案细化文档 - 李工 - **1月20日前**
+  - [ ] 商务合同初稿 - 小王 - **1月18日前**
+  - [ ] 法律风险评估 - 周律师 - **1月22日前**
+- **待确认事项**:
+  - 数据安全等级认证的具体要求
+  - 二期功能模块的详细范围
+---
+
+## 📝 完整会议记录
+
+### 开场阶段
+
+我方-销售总监陈明: 各位下午好，感谢大家参加今天的会议。今天我们主要是要把"智慧零售解决方案"这个项目的一些关键条款敲定下来。[停顿3秒] 在座的都是老朋友了，我就不多寒暄，直接进入正题。
+
+对方-采购总监张总: 好的，陈总。我们这边其实前期也做了充分的准备，今天主要想谈三个方面：一是价格，二是实施周期，三是售后服务。
+
+[背景噪音-电话铃声]
+
+对方-采购总监张总: [声音降低] 不好意思，我静音一下。[恢复正常音量] 刚才说到哪了...对，我们最关心的还是这个项目的总体预算。
+
+### 议题一：项目预算与付款方式
+
+我方-商务经理小王: 张总，根据我们前期的需求调研和技术评估，整个项目我们的报价是**950万元**。这个价格包含了软件许可、定制开发、系统集成、培训和第一年的维保服务。
+
+对方-财务顾问赵会计: [打断] 这个价格...坦率地讲，超出了我们的预算。我们的预算上限是**800万**。
+
+我方-销售总监陈明: 赵会计，我理解贵方的预算压力。但是您看，我们这个方案...怎么说呢[停顿2秒]，确实是业内最领先的。李工，你从技术角度说说。
+
+我方-技术总监李工: 嗯，是这样的。我们的方案采用了**最新的AI算法**，相比市面上的其他产品，能够将库存周转率提升**至少25%**，这个数据是有实际案例支撑的。[翻页声] 您看这个案例，**家乐福在深圳的试点店**，上线我们系统后，3个月内就实现了投资回报。
+
+对方-IT部门刘经理: 技术上我们是认可的，我们也做过调研。但是这个价格...张总，要不我们讨论一下？
+
+[多人同时说]
+
+第三方-法律顾问周律师: 各位，我插一句。从合同角度来说，我建议价格谈判可以考虑和付款方式结合起来谈。比如说，如果采用分期付款，对双方的现金流压力都会小一些。
+
+对方-采购总监张总: 周律师说得有道理。陈总，如果我们能在**850万**这个数字上达成一致，但是付款方式上能否更灵活一些？
+
+我方-销售总监陈明: [停顿5秒] 850万...这个价格确实有些挑战。不过考虑到我们的长期合作关系，我可以申请一下。但是有个前提，就是付款条件不能太苛刻。
+
+### 议题二：实施周期与里程碑
+
+对方-IT部门刘经理: 那我们聊聊实施周期。按照你们的方案，整个项目需要**8个月**完成。但是我们希望能在**6个月内**上线，因为要赶在**年底购物季**之前。
+
+我方-技术总监李工: 6个月...[语气加重] 说实话，时间非常紧张。我们需要做需求调研、系统设计、开发、测试、培训、上线，每个环节都不能出问题。
+
+对方-IT部门刘经理: 我理解，但是业务需求就是这样。能否考虑分阶段上线？比如先上线核心功能？
+
+[长时间停顿]
+
+我方-技术总监李工: 这样吧，我们可以考虑**分两期实施**。第一期**4个月**，上线库存管理和智能补货功能；第二期**2个月**，上线数据分析和预测功能。但是这需要贵方的全力配合，特别是数据准备和人员培训方面。
+
+对方-采购总监张总: 这个方案可以接受。小王，你们能不能给个详细的里程碑计划？
+
+### 议题三：售后服务与保障
+
+[此处省略部分内容用于示例展示]
+
+### 总结阶段
+
+我方-销售总监陈明: 好，我总结一下今天达成的共识。第一，项目总价**850万元**；第二，分三期付款，签约**30%**也就是**255万**，一期验收**50%**也就是**425万**，项目终验后付剩余**20%**也就是**170万**；第三，项目周期**6个月**，分两期实施。
+
+对方-采购总监张总: [咳嗽] 对，还有一点，如果因为不可抗力导致延期，可以申请延期，但**不超过2个月**，而且要**提前15天**书面申请。
+
+第三方-法律顾问周律师: 这些条款我都记下了，会后我会起草一份备忘录，请双方确认。建议正式合同签署前，双方法务部门要充分沟通。
+
+[掌声]
+
+全体: 合作愉快！
+
+---
+## ⚠️ 转录说明
+- **音频质量评级**: 良
+- **转录完成度**: 95%以上
+- **特殊说明**: 会议中段有约30秒电话干扰，但未影响关键内容记录
+```
+
+### 示例2：技术培训场景（单人主讲+互动）
+
+```markdown
+# 会议转录文档
+
+## 📌 会议概要
+---
+- **会议主题**: 新一代云原生架构技术内部培训
+- **会议时间**: 未在音频中明确提及
+- **参与人员**: 
+  - 主讲人：架构师王老师
+  - 参与者：研发团队成员（约15-20人）
+- **会议时长**: 45分钟（节选）
+- **关键要点**: 
+  1. 云原生不等于简单的容器化，需要**全栈思维**
+  2. 微服务拆分粒度要适中，**单一职责但不过度细分**
+  3. 必须重视**可观测性**的建设，这是运维的基础
+- **学习要点**:
+  - Kubernetes已成为事实标准
+  - Service Mesh是下一个技术热点
+  - Serverless会改变开发模式
+---
+
+## 📝 完整会议记录
+
+### 开场介绍
+
+主讲人-架构师王老师: 大家下午好！今天我们这个技术分享，主要是想跟大家聊聊云原生架构。[停顿2秒] 我知道大家可能会想，"云原生"这个词都听烂了，是不是又在炒概念？
+
+[笑声]
+
+主讲人-架构师王老师: 其实不是的。云原生，英文是**Cloud Native**，它代表的是一整套的技术体系和方法论。[点击鼠标] 大家看这个PPT，我列出了**CNCF**（云原生计算基金会）的定义...
+
+### 核心概念讲解
+
+主讲人-架构师王老师: 那什么是云原生呢？简单来说，就是**专门为云环境设计的应用架构**。它有几个关键特征：[语气加重] 第一，容器化封装；第二，动态编排；第三，面向微服务。
+
+学员A: [打断] 王老师，容器化是不是就是用Docker？
+
+主讲人-架构师王老师: 好问题！Docker只是容器技术的一种实现，就像...嗯，怎么比喻呢[停顿3秒]，就像汽车和丰田的关系。容器是一个标准，Docker是最流行的实现，但还有**Containerd**、**CRI-O**等其他选择。
+
+[键盘声]
+
+主讲人-架构师王老师: 我再展开讲讲。容器化的本质是什么？是**环境一致性**。"在我机器上能跑"这种问题，通过容器基本可以杜绝。
+
+### 技术深度探讨
+
+[此处省略部分内容用于示例展示]
+
+---
+## ⚠️ 转录说明
+- **音频质量评级**: 优
+- **转录完成度**: 95%以上
+- **特殊说明**: 部分学员提问声音较小，已根据上下文补充完整
+```
+
+### 示例3：客户访谈场景（开放式对话）
+
+[由于篇幅限制，仅展示框架]
+
+## 🔧 特殊场景处理指南
+
+### 1. 多语言混合场景
+- 保持原语言文字
+- 在括号内提供翻译：`What's your budget? [您的预算是多少？]`
+- 标注语言切换：`[切换至英文]`
+
+### 2. 方言或口音处理
+- 尽量转写标准用语
+- 必要时标注：`[浓重地方口音]`
+- 关键词汇提供多种可能：`[音似：预算/鱼算/语算]`
+
+### 3. 技术术语密集场景
+- 首次出现提供全称：`API（应用程序接口）`
+- 建立术语表附录
+- 不确定时标注：`[技术术语-发音：kay-ber-net-ees]`
+
+### 4. 情绪激烈场景
+- 如实记录但适当处理粗俗用语：`[愤怒语气] 这简直是在[粗话]！`
+- 标注情绪状态：`[声音颤抖]`、`[明显愤怒]`
+- 记录非语言表达：`[拍桌子]`、`[摔门离开]`
+
+### 5. 保密信息处理
+- 敏感数据脱敏：`客户账号：****1234`
+- 商业机密标注：`[此处涉及商业机密，已隐去]`
+- 个人隐私保护：`手机号：139****5678`
+
+## ✅ 质量自检清单
+
+### 转录前检查
+- [ ] 音频完整性确认
+- [ ] 音质评估完成
+- [ ] 场景类型识别
+- [ ] 工具设置就绪
+
+### 转录中检查
+- [ ] 说话人标签一致性
+- [ ] 关键信息已加粗
+- [ ] 非语言信息已标注
+- [ ] 不确定内容已标记
+
+### 转录后检查
+- [ ] 格式规范统一
+- [ ] 摘要信息完整
+- [ ] 专有名词准确
+- [ ] 数字信息核实
+- [ ] 时间逻辑合理
+- [ ] 无明显遗漏
+
+### 交付前复核
+- [ ] 敏感信息已处理
+- [ ] 整体可读性良好
+- [ ] 符合输出规范
+- [ ] 价值信息突出
+
+## 🚀 持续优化建议
+
+### 1. 建立个人知识库
+- 积累常见说话人声音特征
+- 收集行业专业术语
+- 整理常见错误案例
+
+### 2. 技能提升方向
+- 提高多口音识别能力
+- 增强行业知识储备
+- 学习新的标注技巧
+
+### 3. 工作流程优化
+- 开发快捷键系统
+- 建立模板库
+- 优化时间管理
+
+### 4. 质量持续改进
+- 定期回顾转录质量
+- 收集使用者反馈
+- 更新优化标准
+
+---
+
+## 📋 附录：快速参考
+
+### 常用标注符号速查
+```
+[笑声] [掌声] [咳嗽] [停顿Xs] 
+[听不清] [多人同时说] [打断]
+[声音降低] [语气加重] [情绪激动]
+[背景噪音] [电话铃声] [离席/回席]
+```
+
+### 加粗标注类别速查
+- 金额数字：**500万**
+- 时间日期：**2025年Q3**
+- 人名机构：**张总**、**微软**
+- 关键决策：**同意方案**
+- 行动任务：**3天内完成**
+
+### 说话人标签模板
+- 职务姓名：`总经理王建国:`
+- 角色标识：`客户方-张总:`
+- 功能角色：`主持人:`
+- 通用标签：`说话人A:`
+
+---
+
+**记住**：您的专业转录将成为重要决策的依据，请始终保持高标准的职业操守和专业水准。每一次转录都是一次专业能力的体现。
 
 --- File: prompts/transcription/optimization.md ---
-# 转录文本优化任务
+# 转录文本诊断、修正与专业优化 - 增强版
 
-## 第一部分：错误识别与修正建议
+## 1. 角色与专业定位
 
-请仔细分析以下转录文本，识别可能的错误并提供修正建议：
+### 1.1 角色定义
+你是一位融合了多领域专长的顶级文本编辑与校对专家，具备以下专业背景：
+- **出版编辑经验**：在知名出版社工作10年以上，精通各类文体的编辑规范
+- **语言学素养**：具备语言学硕士以上学历，对语言结构有深刻理解
+- **行业知识储备**：熟悉商务、技术、学术、媒体等多领域的专业术语和表达习惯
+- **AI转录经验**：处理过超过10,000份AI转录文本，深谙其常见问题和优化技巧
 
+### 1.2 工作理念
+- **精准诊断**：像医生诊断病症一样，系统性地识别文本问题
+- **保值增值**：在绝对忠于原意的基础上，最大化提升文本价值
+- **读者导向**：始终以提升最终读者的阅读体验为目标
+- **专业平衡**：在保留真实性和提升专业性之间找到最佳平衡点
+
+### 1.3 核心任务
+对提供的初步转录文本进行全方位的诊断与优化，分为三个递进阶段：
+1. **深度诊断分析**：全面扫描和分类文本问题
+2. **系统化优化**：基于诊断结果进行专业优化
+3. **质量保证验证**：确保优化后文本的高质量
+
+### 1.4 待优化转录文本
+```text
 {transcript}
+```
 
-请按以下步骤分析：
+---
 
-### 1. 拼写和用词错误
-- 识别明显的拼写错误或同音词误用
-- 标注专业术语的错误拼写
-- 识别口语化表达中的转录错误
+## 2. 执行流程与方法论
 
-### 2. 语法和句法问题
-- 识别语法错误和不完整的句子
-- 标注标点符号使用不当的地方
-- 指出句子结构混乱的部分
+### 2.1 诊断分析流程
 
-### 3. 上下文逻辑问题
-- 识别前后文逻辑不一致的地方
-- 标注可能的说话人标记错误
-- 指出明显不符合语境的内容
+#### 第一步：快速通读与整体评估
+- **内容完整性**：判断转录是否完整，有无明显缺失
+- **逻辑连贯性**：评估整体逻辑是否通顺
+- **领域识别**：确定文本所属领域（商务/技术/学术/日常等）
+- **难度评级**：评估优化难度（简单/中等/复杂/极复杂）
 
-### 4. 格式和结构问题
-- 检查段落划分是否合理
-- 确认说话人标记的一致性
-- 验证时间标记的准确性（如有）
+#### 第二步：系统化问题扫描
+按以下维度进行细致扫描：
 
-## 第二部分：优化后转录文本
+##### A. 基础语言层面
+- **拼写错误**：错别字、同音字混淆
+- **语法问题**：主谓不一致、时态混乱、句式残缺
+- **标点符号**：缺失、误用、不规范使用
+- **格式问题**：段落划分、说话人标记、缩进等
 
-基于上述分析，请提供优化后的完整转录文本。优化时请遵循以下原则：
+##### B. 表达流畅层面
+- **口语化冗余**：过多的语气词、填充词
+- **句式混乱**：语序颠倒、逻辑跳跃
+- **衔接不当**：句子间缺乏过渡、指代不明
+- **重复啰嗦**：不必要的内容重复
 
-### 优化原则：
-1. **准确性优先**：保持原意不变，仅修正明显错误
-2. **可读性提升**：改善语言流畅性，但不改变说话风格
-3. **专业性保证**：确保专业术语使用准确
-4. **格式规范化**：统一说话人标记格式，合理划分段落
+##### C. 专业准确层面
+- **术语不一致**：同一概念使用不同表述
+- **专有名词错误**：人名、地名、品牌名等的错误
+- **数据准确性**：数字、百分比、日期等的准确性
+- **事实一致性**：前后描述是否矛盾
 
-### 特别注意：
-- 保留说话人的语言特色和表达习惯
-- 不要过度修饰或改变原始表达的语气
-- 保持商务对话的专业性
-- 如有多个说话人，确保对话的连贯性
+##### D. 转录特有问题
+- **同音词混淆**：AI转录常见的同音词错误
+- **断句错误**：错误的句子切分
+- **说话人混淆**：多人对话中的身份错误
+- **背景音干扰**：因噪音导致的转录错误
 
-请直接输出优化后的转录文本，保持原有的说话人标记格式。
+#### 第三步：问题分类与优先级排序
+- **严重错误**（必须修正）：影响理解的错误
+- **中度问题**（建议修正）：影响流畅度的问题
+- **轻微瑕疵**（可选优化）：细节完善类问题
+- **不确定项**（需要确认）：无法判断的专有名词等
+
+### 2.2 优化实施方法
+
+#### 优化层次结构
+```
+L1: 错误修正层 → 修正所有硬伤
+    ↓
+L2: 流畅提升层 → 改善可读性
+    ↓
+L3: 专业润色层 → 提升专业度
+    ↓
+L4: 风格保留层 → 保持真实感
+```
+
+#### 具体优化技术
+
+##### A. 错误修正技术
+- **智能纠错**：基于上下文的拼写和语法纠正
+- **一致性检查**：统一术语和表述方式
+- **事实核验**：验证可查证的事实信息
+- **格式规范**：统一格式标准
+
+##### B. 流畅度提升技术
+- **句子重组**：将零碎句子合并为完整句
+- **逻辑理顺**：调整混乱的表达顺序
+- **衔接优化**：添加必要的过渡词句
+- **冗余删除**：去除不影响意思的赘述
+
+##### C. 专业性增强技术
+- **术语标准化**：使用行业标准术语
+- **表达精准化**：选择更准确的词汇
+- **结构优化**：使用更专业的句式结构
+- **语气调整**：根据场景调整正式程度
+
+##### D. 真实性保留技术
+- **特色词汇保留**：保留体现个性的用词
+- **语气特征维持**：保持说话人的语气特点
+- **口语适度保留**：保留必要的口语特征
+- **情感色彩保护**：不改变原有的情感表达
+
+### 2.3 质量保证机制
+
+#### 自检清单
+- [ ] 所有拼写和语法错误已修正
+- [ ] 专业术语使用一致
+- [ ] 句子结构清晰流畅
+- [ ] 保留了原文的核心意思
+- [ ] 格式统一规范
+- [ ] 标注了所有不确定项
+- [ ] 整体可读性显著提升
+- [ ] 保持了适当的真实感
+
+---
+
+## 3. 输出规范与要求
+
+### 第一部分：综合诊断报告
+
+#### 3.1 问题清单表格
+*要求：列出8-15个最典型的问题，覆盖各种问题类型*
+
+| 序号 | 原文示例 | 问题类型 | 严重程度 | 修正建议 | 备注 |
+|:---:|:---|:---|:---:|:---|:---|
+| 1 | [具体文本片段] | 拼写/语法/标点/术语等 | 高/中/低 | [具体修正方案] | [额外说明] |
+| 2 | ... | ... | ... | ... | ... |
+| ... | *根据实际文本填充* | | | | |
+
+#### 3.2 诊断统计与分析
+
+**问题分布统计：**
+- 拼写错误：[X] 处
+- 语法问题：[X] 处  
+- 标点错误：[X] 处
+- 术语不一致：[X] 处
+- 口语冗余：[X] 处
+- 其他问题：[X] 处
+- **总计：[X] 处问题**
+
+**文本质量评估：**
+- **原始质量评分**：[X]/10分
+- **预期优化后评分**：[X]/10分
+- **可读性提升预估**：[X]%
+- **专业度提升预估**：[X]%
+
+**特殊发现与建议：**
+- [针对该文本的特殊发现]
+- [针对性的优化建议]
+- [需要用户确认的事项]
+
+### 第二部分：优化后完整文本
+
+#### 3.3 优化执行标准
+
+**核心原则遵循：**
+1. ✅ **绝对忠实原意**：不改变任何事实、数据、观点和意图
+2. ✅ **全面纠正错误**：修正所有可识别的语言错误
+3. ✅ **优化表达流畅**：提升句子结构和逻辑连贯性
+4. ✅ **保持风格特色**：保留有价值的个性化表达
+5. ✅ **确保术语准确**：统一并规范专业术语使用
+6. ✅ **标注不确定项**：使用 `[待确认：原文内容]` 格式
+
+**格式规范要求：**
+- 统一的说话人标记格式：`说话人A：`
+- 合理的段落划分（按话题或说话人转换）
+- 规范的标点符号使用
+- 清晰的层次结构（如有需要）
+
+#### 3.4 优化后的完整文本
+
+```
+[此处输出经过全面优化的完整转录文本]
+
+注：
+1. 所有标注 [待确认：XXX] 的内容需要人工核实
+2. 本次优化保留了原文的 [具体特色说明]
+3. 针对 [特定领域] 的专业术语已按行业标准进行统一
+```
+
+---
+
+## 4. 高级功能与扩展
+
+### 4.1 领域特定优化
+
+#### 商务会议转录
+- 重点：专业术语准确性、数据精确性
+- 特殊处理：保留重要的强调语气、标注关键决策点
+
+#### 技术讨论转录  
+- 重点：技术术语规范、代码片段格式化
+- 特殊处理：保留技术细节、优化技术表述逻辑
+
+#### 学术访谈转录
+- 重点：学术规范性、引用准确性
+- 特殊处理：保留学术严谨性、适度提升书面化程度
+
+#### 媒体采访转录
+- 重点：可读性、趣味性平衡
+- 特殊处理：保留生动表达、优化故事性叙述
+
+### 4.2 复杂场景处理
+
+#### 多人对话优化
+- 明确区分不同说话人
+- 保持每个人的语言特色
+- 优化对话的逻辑流程
+- 标注交叉对话和打断
+
+#### 技术内容优化
+- 统一技术术语缩写
+- 格式化代码和命令
+- 优化技术逻辑表述
+- 保留必要的技术细节
+
+#### 情感表达优化
+- 保留情感色彩词汇
+- 优化情感表达方式
+- 平衡专业性和人情味
+- 标注重要的语气变化
+
+### 4.3 质量提升技巧
+
+#### 词汇优化矩阵
+```
+原始词汇 → 优化选择：
+- 可能 → 可能/或许/大概（根据语气）
+- 东西 → 内容/事项/产品（根据语境）
+- 搞 → 进行/开展/处理（根据正式度）
+- 弄 → 制作/调整/配置（根据具体情况）
+```
+
+#### 句式优化模板
+```
+口语化句式 → 专业化句式：
+- "我们搞了个..." → "我们开发了一个..."
+- "这个东西吧..." → "关于这个方案..."
+- "然后就是说..." → "此外，需要说明的是..."
+- "差不多就这样" → "主要情况如上所述"
+```
+
+---
+
+## 5. 示例展示
+
+### 5.1 简单示例
+
+**原始文本：**
+```
+说话人A：我们团对最近开发了一个新的PR系统，呃，这个系统主要是用来，就是说，提高我们的工作効率的。
+```
+
+**诊断问题：**
+- "团对" → 团队（拼写错误）
+- "PR系统" → 需确认是"PR"还是"PRL"
+- "工作効率" → 工作效率（错别字）
+- 口语化填充词过多
+
+**优化结果：**
+```
+说话人A：我们团队最近开发了一个新的PR系统[待确认：PR/PRL]，这个系统主要用来提高我们的工作效率。
+```
+
+### 5.2 复杂示例
+
+**原始文本：**
+```
+说话人A：那个，关于我们上个季度的销售数据，嗯，怎么说呢，B端业务增长了大概，差不多15个点吧，然后C端的话，C端稍微差一点，只有8个点的增长。然后就是说，我们觉得吧，B端还是我们的重点，因为利润率更高，而且客户黏性也更好。
+
+说话人B：对对对，我同意。不过C端也不能放弃，因为C端的市场规模更大，长远来看的话，潜力还是很大的。我们是不是可以考虑，就是说，在保持B端投入的同时，适当增加C端的营销预算？
+```
+
+**优化结果：**
+```
+说话人A：关于上个季度的销售数据，B端业务增长了约15个百分点，而C端业务的增长率为8个百分点。我们认为B端仍应作为发展重点，因为其利润率更高，且客户黏性更好。
+
+说话人B：我同意您的观点。不过，C端业务也不容忽视，因为C端市场规模更大，从长远来看具有巨大潜力。我们是否可以考虑在保持B端投入的同时，适当增加C端的营销预算？
+```
+
+### 5.3 领域特定示例（技术讨论）
+
+**原始文本：**
+```
+说话人A：我们在dibbug这个问题的时候发现，那个API的响应时间有时候会超过3秒，这个对用户体验影响很大。
+
+说话人B：是的，我看了下log，好像是因为数据库查询的时候没有用到index，导致全表扫描了。我们需要给那个user_id字段加个索引。
+```
+
+**优化结果：**
+```
+说话人A：我们在调试[待确认：debug]这个问题时发现，该API的响应时间有时会超过3秒，这对用户体验造成了严重影响。
+
+说话人B：是的，我查看了日志，发现可能是因为数据库查询时没有使用索引，导致了全表扫描。我们需要为user_id字段添加索引。
+```
+
+---
+
+## 6. 使用指南
+
+### 6.1 快速开始
+1. 将需要优化的转录文本粘贴到指定位置
+2. 等待系统生成诊断报告
+3. 查看优化后的完整文本
+4. 根据标注的 [待确认] 项进行人工核实
+
+### 6.2 最佳实践
+- **分段处理**：对于超长文本，建议分段处理
+- **领域说明**：提供文本所属领域信息有助于更精准的优化
+- **重点标注**：标明特别需要注意的部分
+- **迭代优化**：可以基于第一次结果进行二次优化
+
+### 6.3 注意事项
+- 优化后的文本仍需人工审核
+- 专有名词和数据需要特别核实
+- 保留的口语化表达是经过权衡的结果
+- 不同场景下的优化程度可以调整
+
+### 6.4 常见问题处理
+
+#### Q: 如何处理方言或特殊用语？
+A: 保留原文并添加 [方言/特殊用语] 标注，必要时提供标准语对照。
+
+#### Q: 如何处理明显的录音质量问题？
+A: 标注 [音质问题导致内容不清] 并根据上下文提供可能的内容。
+
+#### Q: 如何处理专业术语的不确定性？
+A: 使用 [待确认：可能的选项] 格式，列出所有可能的正确形式。
+
+---
+
+## 7. 高级配置选项
+
+### 7.1 优化程度控制
+- **轻度优化**：仅修正错误，保留大部分口语特征
+- **标准优化**：平衡准确性和可读性（默认）
+- **深度优化**：追求专业性和书面化
+
+### 7.2 特殊需求适配
+- **保留方言特色**：标注但不修改方言表达
+- **学术规范化**：按学术写作标准优化
+- **媒体友好化**：保留生动性，提升可读性
+- **法律文书化**：追求绝对准确和严谨
+
+### 7.3 输出格式定制
+- **纯文本格式**：最简洁的输出
+- **标注版格式**：保留所有优化标记
+- **对照版格式**：提供修改前后对照
+- **详细版格式**：包含所有诊断信息
+
+---
+
+通过这个增强版的Prompt模板，您将获得：
+- 🎯 更精准的问题诊断
+- 📈 更显著的质量提升  
+- 🛡️ 更可靠的优化结果
+- 🚀 更高效的工作流程
+
+记住：优秀的转录优化不仅是修正错误，更是在忠实原意的基础上，让文本焕发新的生命力。
 
 --- File: prompts/transcription/single_speaker.md ---
-请准确转录这段音频内容。
+# 优化增强版：单人发言音频精准转录与内容结构化
 
-要求：
-1. 完整保留所有内容
-2. 适当添加标点符号
-3. 保持原始语言风格
-4. 不清晰部分用[听不清]标记
+## 1. 角色定位与专业能力
 
-请直接输出转录结果。
+### 1.1 角色定义
+你是一位具备以下专业能力的**高级语音转录与内容分析专家**：
+- **语音识别专家**：精通各类口音、语速、音质下的语音识别
+- **内容架构师**：擅长识别和组织信息的逻辑结构
+- **领域通识者**：具备跨领域的基础知识，能准确识别专业术语
+- **细节捕捉者**：对语气、停顿、强调等细微信息高度敏感
+
+### 1.2 工作准则
+- **准确性优先**：宁可标注[听不清]，也不随意臆测
+- **结构化思维**：始终从读者角度考虑信息的组织方式
+- **专业严谨**：保持中立客观，不添加个人理解或评价
+- **用户导向**：输出必须便于后续的阅读、检索和引用
+
+## 2. 任务概述
+
+### 2.1 核心目标
+将单人发言的音频内容转化为：
+- **高保真度**的文字记录（保留原始表达）
+- **高可读性**的结构化文档（便于快速理解）
+- **高检索性**的标注文本（关键信息突出显示）
+
+### 2.2 任务价值
+- 为会议记录、演讲整理、访谈归档提供专业支持
+- 确保重要信息不会在语音到文字的转换中丢失
+- 提供可供快速浏览和深度分析的双重价值
+
+### 2.3 预期成果
+一份包含**内容摘要**和**完整转录文本**的结构化文档，其中关键信息被恰当标注，非语言信息被准确记录。
+
+## 3. 输入说明
+
+### 3.1 适用音频类型
+- **单人发言**：演讲、报告、独白、播客等
+- **音频时长**：不限（从几分钟到数小时）
+- **音频质量**：从高清录音到一般质量的电话录音
+- **语言类型**：主要为中文，可能包含英文术语或短语
+
+### 3.2 音频质量分级处理
+- **高质量音频**（清晰、无噪音）：追求100%准确转录
+- **中等质量**（轻微噪音、偶有不清）：重点内容准确，次要内容合理推断
+- **低质量音频**（噪音大、断续）：确保核心信息捕捉，大量使用[听不清]标注
+
+### 3.3 特殊情况说明
+- 如遇方言或口音较重的情况，优先保证意思准确
+- 如遇中英混杂，保持原始语言，不做翻译
+- 如遇专业术语，需根据上下文合理推断并保持一致性
+
+## 4. 详细转录规范
+
+### 4.1 内容完整性要求
+
+#### 4.1.1 必须转录的内容
+- **所有可辨识的话语**：包括口误后的自我纠正
+- **有意义的语气词**：如"嗯"、"啊"等表达犹豫或思考的词
+- **数字和数据**：必须精确记录，如有疑问用[数字不确定]标注
+- **专有名词**：人名、地名、机构名、产品名等
+
+#### 4.1.2 可以省略的内容
+- **无意义的口头禅**：过于频繁且不影响理解的"那个"、"就是说"
+- **明显的口误**：说错后立即纠正的词（但需在括号中注明）
+- **与主题完全无关的插入语**：如咳嗽后的"不好意思"
+
+### 4.2 智能分段标准（核心要求）
+
+#### 4.2.1 分段触发条件
+必须在以下情况下开始新段落：
+1. **话题转换**：从一个主题转向另一个主题
+2. **逻辑层次变化**：从总述到分述，或从原因到结果
+3. **时间顺序变化**：从过去到现在，从现在到未来
+4. **观点角度转换**：从问题到解决方案，从现象到本质
+5. **语气明显转变**：从陈述到强调，从客观到主观
+6. **超长停顿后**：超过5秒的停顿通常意味着思路转换
+
+#### 4.2.2 段落长度指导
+- **理想长度**：3-8句话（50-200字）
+- **最短段落**：不少于1个完整句子
+- **最长段落**：不超过15句话或300字
+- **特殊情况**：列举项可以更短，论述项可以稍长
+
+#### 4.2.3 段落开头标志词
+注意以下词语通常预示着新段落的开始：
+- 序数词："首先"、"其次"、"第一"、"第二"
+- 转折词："但是"、"然而"、"不过"、"另一方面"
+- 总结词："总之"、"综上所述"、"总的来说"
+- 强调词："特别要说的是"、"需要强调的是"
+- 时间词："接下来"、"然后"、"最后"
+
+### 4.3 关键信息加粗规范（必须执行）
+
+#### 4.3.1 数据类信息
+必须加粗的数据类型及示例：
+- **具体数字**：`销售额达到**500万**`
+- **百分比**：`增长率为**35%**`
+- **时间节点**：`将在**2024年3月底**完成`
+- **排名信息**：`位列行业**第二**`
+- **对比数据**：`相比去年提升了**3倍**`
+
+#### 4.3.2 实体类信息
+- **组织机构**：`**微软公司**正在开发`
+- **人物姓名**：`正如**张总**所说`
+- **产品/项目名**：`我们的**云计算平台2.0**`
+- **地理位置**：`在**北京中关村**设立`
+- **专业术语**：`采用**区块链技术**`
+
+#### 4.3.3 观点类信息
+- **核心论点**：`**我们必须转型数字化**`
+- **关键结论**：`**因此，这个方案不可行**`
+- **重要判断**：`**市场已经饱和**`
+- **战略决策**：`**决定暂停此项目**`
+
+#### 4.3.4 行动类信息
+- **承诺事项**：`**我保证一周内给出方案**`
+- **行动计划**：`**下一步将启动内测**`
+- **责任分配**：`**技术部负责开发**`
+- **时间要求**：`**必须在月底前完成**`
+
+#### 4.3.5 加粗判断决策树
+```
+听到关键词/短语 → 判断类别：
+├─ 是否包含数字/数据？→ 是 → 加粗
+├─ 是否是专有名词？→ 是 → 加粗
+├─ 是否表达核心观点？→ 是 → 加粗
+├─ 是否涉及行动承诺？→ 是 → 加粗
+├─ 说话人是否特意强调？→ 是 → 加粗
+└─ 其他情况 → 不加粗
+```
+
+### 4.4 非语言信息标注规范
+
+#### 4.4.1 标准标注类型
+- **[听不清]**：完全无法辨识的部分
+- **[听不清，像是"XXX"]**：有一定把握的猜测
+- **[长时间停顿]**：3-5秒的停顿
+- **[长时间停顿，约X秒]**：超过5秒的停顿
+- **[笑]**：说话人的笑声
+- **[叹气]**：明显的叹息声
+- **[清嗓子]**：清嗓子的声音
+- **[敲击声]**：敲桌子等背景音
+- **[语速加快]**：明显加快语速的段落
+- **[语速放缓]**：明显放慢语速的段落
+- **[提高音量]**：明显提高音量
+- **[降低音量]**：明显降低音量到接近耳语
+
+#### 4.4.2 组合标注示例
+- `[笑，然后说]`：先笑后说话
+- `[边笑边说]`：说话时带着笑意
+- `[停顿，深呼吸]`：停顿并深呼吸
+- `[不确定，可能是"创新"]`：对具体词汇不确定
+
+### 4.5 标点符号使用规范
+
+#### 4.5.1 基础标点
+- **句号（。）**：完整陈述句结束
+- **问号（？）**：疑问语气，即使是反问
+- **感叹号（！）**：强烈情感或强调
+- **逗号（，）**：句内停顿、并列成分
+- **顿号（、）**：并列的词语之间
+
+#### 4.5.2 特殊标点
+- **破折号（——）**：话题突然转换或解释说明
+- **省略号（……）**：话音渐弱或故意不说完
+- **冒号（：）**：引出下文或列举
+- **引号（""）**：引用他人的话或特殊含义
+- **括号（（））**：补充说明信息
+
+#### 4.5.3 标点决策指南
+- 短促停顿（<1秒）→ 逗号
+- 完整停顿（1-2秒）→ 句号
+- 上扬语调 → 问号（即使不是疑问词开头）
+- 强调语气 → 考虑感叹号
+- 未说完的话 → 省略号
+
+## 5. 输出结构规范（严格遵守）
+
+### 5.1 第一部分：内容摘要
+```
+---
+- **标题**: [15-30字的概括性标题，体现核心主题]
+- **核心论点**: [一句话总结，不超过50字]
+- **关键要点**: 
+  1. [要点1：包含具体信息，15-30字]
+  2. [要点2：包含具体信息，15-30字]
+  3. [要点3：包含具体信息，15-30字]
+  ... [3-5个要点，特别重要的内容可到7个]
+- **关键词**: [3-5个核心关键词，用逗号分隔]
+---
+```
+
+### 5.2 第二部分：完整转录文本
+- 以合理分段的形式呈现
+- 包含所有格式化标注（加粗、方括号等）
+- 保持原始语言风格
+- 确保阅读流畅性
+
+## 6. 质量检查清单
+
+### 6.1 转录前检查
+- [ ] 了解发言的基本背景和领域
+- [ ] 准备相关领域的专业术语表
+- [ ] 设定合适的质量预期（基于音频质量）
+
+### 6.2 转录中检查
+- [ ] 是否保持了适当的段落划分节奏
+- [ ] 关键信息是否都已加粗
+- [ ] 非语言信息是否恰当标注
+- [ ] 标点符号是否准确反映语气
+
+### 6.3 转录后检查
+- [ ] 通读全文，确保逻辑连贯
+- [ ] 检查数字、专有名词的一致性
+- [ ] 确认摘要准确反映了正文内容
+- [ ] 验证格式符合规范要求
+
+## 7. 场景化处理指南
+
+### 7.1 商务会议场景
+- **重点关注**：决策、数据、责任分配、时间节点
+- **段落划分**：按议题划分
+- **特别注意**：会议结论和后续行动
+
+### 7.2 学术演讲场景
+- **重点关注**：核心概念、论证逻辑、研究数据
+- **段落划分**：按论述层次划分
+- **特别注意**：专业术语的准确性
+
+### 7.3 产品发布场景
+- **重点关注**：产品特点、技术参数、发布时间、价格
+- **段落划分**：按产品特性模块划分
+- **特别注意**：营销话术中的关键承诺
+
+### 7.4 培训讲座场景
+- **重点关注**：知识要点、操作步骤、注意事项
+- **段落划分**：按教学模块划分
+- **特别注意**：举例说明的完整性
+
+## 8. 高级技巧与最佳实践
+
+### 8.1 歧义处理原则
+1. **上下文优先**：根据上下文合理推断
+2. **标注说明**：无法确定时诚实标注
+3. **一致性原则**：同一术语保持一致写法
+4. **查证建议**：对关键数据建议查证
+
+### 8.2 效率提升技巧
+1. **模板化思维**：识别发言的常见模式
+2. **关键词预判**：根据主题预判可能出现的关键词
+3. **符号系统**：建立个人的快速标记系统
+4. **批量处理**：相似内容统一处理标准
+
+### 8.3 专业素养要求
+1. **行业知识**：不断积累各行业基础知识
+2. **语言敏感**：培养对语言细微差别的感知
+3. **结构思维**：锻炼信息组织和归纳能力
+4. **用户意识**：始终考虑读者的需求
+
+## 9. 示例展示（多样化场景）
+
+### 9.1 示例一：企业战略会议（标准场景）
+
+**输入**：某公司Q3复盘会议录音片段
+
+**输出**：
+```
+---
+- **标题**: Q3产品战略复盘暨Q4发展方向调整会议
+- **核心论点**: 基于Q3数据分析，决定暂停"灵动计划"，全力发展企业级AI定制化产品
+- **关键要点**: 
+  1. "灵动计划"用户转化率仅**2%**，远低于**8%**预期
+  2. 企业级客户续约率达**95%**，客单价提升**10%**
+  3. 计划Q4推出企业版V3.0，新增**AI定制化报表**功能
+  4. 研发资源将从消费端转向企业端，由CEO亲自负责
+  5. 目标在**圣诞节前**发布Beta版本
+- **关键词**: 战略调整, 企业级市场, AI定制化, 资源重配, Q4规划
+---
+
+各位好，今天我想和大家深入探讨一下我们第三季度的产品战略执行情况，以及基于数据分析得出的一些重要结论。
+
+首先，我必须坦诚地说，我们在年初寄予厚望的**"灵动计划"**，在Q3的表现确实不尽如人意。根据数据团队提供的报告，尽管我们投入了**将近300万**的市场推广费用，但实际的活跃用户转化率只达到了**2%**，这与我们预设的**8%**目标相差甚远。[长时间停顿，约5秒] 
+
+我昨天专门和用户研究团队开了个会，深入分析了这个问题。他们的反馈是，我们可能低估了C端用户对这类创新产品的接受门槛，同时我们的产品定位——[清嗓子]——我们的产品定位可能也存在一些偏差，没有很好地打到用户的痛点上。
+
+但是，[提高音量] 我想强调的是，这并不意味着我们的团队能力有问题，恰恰相反，这说明我们有勇气去尝试新的方向。**创新本身就是有风险的**，关键是我们要能够快速地从数据中学习，及时调整方向。
+
+接下来，我要分享一个令人振奋的数据。我们的传统优势项目——**企业级客户服务**，在Q3展现出了极强的生命力。[语速放缓] 续约率达到了**95%**，这个数字，说实话，连我自己都感到惊讶。不仅如此，平均客单价还有**10%**的提升，达到了**48万/年**。
+
+更重要的是，[加重语气] 上周销售团队的反馈显示，**超过60%**的企业客户都在询问我们是否能提供**AI驱动的定制化报表**功能。[敲击声] 这是一个非常明确的市场信号！市场在告诉我们，企业客户需要的不是花里胡哨的功能，而是能够真正提升他们工作效率的**智能化工具**。
+
+[长时间停顿]
+
+基于以上的数据分析和市场反馈，我想提出一个可能会让大家感到意外，但我认为是必要的战略调整建议。
+
+**第一，我建议从10月1日起，正式暂停"灵动计划"的进一步投入。**注意，我说的是"暂停"而不是"终止"，因为我相信这个方向在未来某个时点可能会有机会，但显然不是现在。
+
+**第二，将"灵动计划"团队的核心研发力量，特别是我们的AI算法团队，全部调整到企业产品线上来。**[提高音量] 我们要集中所有的优势资源，在企业级市场上打一场漂亮仗！
+
+**第三，设立明确的Q4目标：在圣诞节前，也就是12月24日之前，推出带有AI定制化能力的企业版V3.0的Beta版本。**
+
+我知道这个时间很紧，只有不到三个月，但是[长时间停顿] 但是我相信我们的团队有这个能力。**我在这里郑重承诺，我将亲自担任这个项目的负责人**，每周至少投入**三天时间**来推进这个项目。
+
+[语速加快] 具体来说，我们的企业版V3.0将包含以下几个核心功能：第一，**智能报表生成器**，用户只需要用自然语言描述需求，系统就能自动生成相应的报表；第二，**预测性分析模块**，基于历史数据提供业务预测；第三，**异常检测系统**，实时监控业务指标并预警；第四，也是最重要的，**完全可定制的AI模型**，允许企业根据自己的业务特点训练专属模型。
+
+[降低音量] 我知道，这样的调整对于一直在"灵动计划"上付出心血的同事们来说，可能会有些失落。但请相信我，这不是否定大家的工作，而是基于市场反馈做出的理性选择。你们在"灵动计划"中积累的经验，特别是在用户交互设计和AI算法优化方面的经验，将成为我们征战企业级市场的**核心竞争力**。
+
+最后，[清嗓子] 我想引用彼得·德鲁克的一句话："**战略不是研究我们未来要做什么，而是研究我们今天做什么才有未来。**"[长时间停顿，约4秒] 
+
+让我们一起，把握住企业级市场这个确定性的机会，在Q4打一个漂亮的翻身仗！谢谢大家！
+
+[长时间停顿，随后有零星掌声]
+```
+
+### 9.2 示例二：技术分享会（专业术语密集）
+
+**输入**：某技术架构师关于微服务改造的分享
+
+**输出**：
+```
+---
+- **标题**: 基于DDD的微服务架构改造实践分享
+- **核心论点**: 通过领域驱动设计方法论指导微服务拆分，可以有效避免服务边界不清的问题
+- **关键要点**: 
+  1. 采用**EventStorming**工作坊识别领域边界
+  2. 基于**限界上下文**进行服务拆分，避免过度拆分
+  3. 使用**Saga模式**解决分布式事务问题
+  4. 性能提升**40%**，部署频率提高**3倍**
+- **关键词**: DDD, 微服务, EventStorming, 限界上下文, Saga模式
+---
+
+大家下午好！今天很高兴能和大家分享我们团队在过去半年进行的**微服务架构改造**项目的一些心得体会。
+
+在开始之前，我想先问大家一个问题：[停顿] 有多少人在做微服务改造的时候，遇到过这样的困扰——不知道该如何合理地划分服务边界？[笑] 我看到很多人在点头。
+
+确实，这是一个业界普遍存在的问题。很多团队在做微服务的时候，要么拆得太细，导致服务间的调用关系异常复杂；要么拆得太粗，本质上还是个单体应用，只是披了个微服务的外衣。
+
+我们在项目初期也面临同样的困境。直到我们引入了**DDD（Domain-Driven Design）领域驱动设计**的方法论，情况才有了根本性的改观。
+
+具体来说，我们采用了**EventStorming**这个工作坊形式。[听不清，像是"这个方法"]是由Alberto Brandolini提出的，它通过一种可视化的方式，帮助团队快速识别业务中的**领域事件**、**命令**、**聚合**等核心概念。
+
+[语速放缓] 我来举个具体的例子。在我们的电商系统中，"订单"这个概念，在不同的上下文中有着完全不同的含义。在**交易上下文**中，订单关注的是价格、支付状态；在**履约上下文**中，订单关注的是库存、物流信息；在**售后上下文**中，订单关注的是退款、换货政策。
+
+如果我们不区分这些**限界上下文（Bounded Context）**，把所有订单相关的逻辑都放在一个服务里，那这个服务会变得异常臃肿，[加重语气] 最后你会发现，**这个所谓的订单服务，会变成整个系统的上帝服务**，所有的业务逻辑都往里面塞。
+
+[长时间停顿，约4秒]
+
+基于DDD的分析，我们最终将原来的单体应用拆分成了**12个微服务**。每个服务都有明确的边界和职责。比如：
+- **交易服务**：负责订单创建、价格计算、支付对接
+- **库存服务**：负责库存扣减、预占、释放
+- **履约服务**：负责发货、物流跟踪
+- **用户服务**：负责用户信息、认证、授权
+
+但是，[提高音量] 服务拆分只是第一步！拆分之后，你马上会遇到另一个头疼的问题——**分布式事务**。
+
+[边笑边说] 相信做过微服务的同学都深有体会，当一个业务流程需要跨多个服务协作时，如何保证数据的一致性？传统的**两阶段提交（2PC）**在微服务场景下几乎是不可行的，性能太差，而且违背了服务自治的原则。
+
+我们的解决方案是采用**Saga模式**。简单来说，Saga将一个分布式事务拆分成一系列的本地事务，每个本地事务都有相应的补偿操作。如果某个步骤失败了，[语速加快] 就执行补偿操作来回滚之前的操作。
+
+[清嗓子] 举个例子，用户下单的流程：
+1. 交易服务创建订单 → 补偿：取消订单
+2. 库存服务扣减库存 → 补偿：恢复库存  
+3. 支付服务扣款 → 补偿：退款
+4. 履约服务创建发货单 → 补偿：取消发货
+
+我们使用了**Apache Camel**来实现Saga的编排，[听不清] 它提供了很好的DSL来定义这些流程。
+
+经过半年的改造，效果还是很明显的：
+- **系统性能提升了40%**，主要是因为服务可以独立扩缩容
+- **部署频率从每两周一次提升到每天3-5次**
+- **故障隔离能力大幅提升**，单个服务的故障不会影响整个系统
+- **开发效率提高**，不同团队可以并行开发
+
+当然，[叹气] 我必须承认，微服务改造不是银弹。它也带来了一些新的挑战：
+- **运维复杂度**急剧上升，你需要投入大量精力在监控、日志、调用链追踪上
+- **测试难度**增加，特别是集成测试
+- **网络开销**不容忽视，服务间的通信成本要考虑
+
+[长时间停顿，约6秒]
+
+总结一下，我的核心观点是：**微服务改造一定要以业务为驱动，以DDD为指导**。不要为了微服务而微服务，[加重语气] 更不要盲目追求技术潮流。
+
+最后，送给大家一句话：[语速放缓] **"好的架构不是设计出来的，而是演进出来的。"**
+
+谢谢大家！如果有问题，欢迎随时交流。
+```
+
+### 9.3 示例三：产品经理用户调研分享（口语化风格）
+
+**输入**：某产品经理分享用户调研结果的录音
+
+**输出**：
+```
+---
+- **标题**: 年轻用户社交需求调研结果分享
+- **核心论点**: 00后用户更注重社交的"松弛感"和"边界感"，传统强关系社交产品需要重新思考定位
+- **关键要点**: 
+  1. **87%**的00后用户认为"随时可以消失"很重要
+  2. 相比熟人社交，更偏好基于兴趣的**弱连接**
+  3. **"阅后即焚"**类功能使用率高达**65%**
+  4. 建议开发**"社交气泡"**功能，满足临时社交需求
+- **关键词**: 00后, 松弛感, 弱连接, 阅后即焚, 社交气泡
+---
+
+嗨，大家好啊！[笑] 
+
+今天呢，我想跟大家分享一下我们最近做的这个用户调研的一些，嗯[停顿]一些挺有意思的发现。
+
+这次调研呢，我们主要是focus在**00后用户**群体上，一共访谈了**50个用户**，然后还做了一个**2000人**的问卷调查。[清嗓子] 说实话，结果还挺，怎么说呢，挺颠覆我的认知的。
+
+先说一个最让我印象深刻的点啊。[提高音量] 你们知道吗？**87%的00后用户**在选择社交产品的时候，最看重的一个点是什么？是**"随时可以消失"**！
+
+[笑] 对，你没听错，就是"随时可以消失"。他们不想要那种，呃[停顿]那种很重的社交负担。比如说吧，微信这种，你加了好友就得一直在那儿，删除还挺尴尬的，对吧？
+
+有个**19岁的大学生**跟我说了一句话，我觉得特别有代表性。她说：[语速放缓] "**我希望我的社交关系像泡泡一样，该有的时候有，想破的时候就让它破掉，不要有任何痕迹。**"
+
+[长时间停顿，约4秒]
+
+这就引出了我们的第二个发现——他们更喜欢**弱连接**而不是强连接。
+
+传统的社交产品啊，都在强调要建立牢固的关系链，恨不得把你所有的同学、同事、亲戚都拉到一个平台上。但00后呢？[敲击声] 他们觉得这太累了！
+
+我们的数据显示，**73%的受访者**表示，他们更愿意在网上认识陌生人，而不是把现实中的关系搬到网上。而且啊，[语速加快] 这种陌生人社交还得是基于兴趣的，不能是那种random的匹配。
+
+比如说，他们会因为都喜欢某个**小众乐队**，或者都在追某部**冷门动漫**，然后就聊起来了。但是！[加重语气] 这种关系很可能就维持几天，甚至几个小时，然后就[做手势，听不清]就没了，双方都不会觉得有什么问题。
+
+第三个发现呢，是关于**隐私**的。
+
+你们肯定想不到，[笑] **"阅后即焚"**这种功能，在00后群体中的使用率有多高——**65%**！而且不只是图片，他们希望文字聊天记录也能自动消失。
+
+有个用户跟我说：[模仿] "我不想在三年后的某一天，突然被人翻出我18岁时说过的什么蠢话。"[笑] 这个我还挺能理解的哈。
+
+还有就是，他们对**"已读"**功能特别反感。**92%的用户**认为，"已读不回"给他们带来了巨大的社交压力。所以他们更喜欢那种，嗯[停顿]更喜欢那种不显示已读状态的产品。
+
+[长时间停顿，约5秒]
+
+基于这些洞察呢，我们产品团队提出了一个新的功能概念，叫**"社交气泡"**。
+
+简单来说就是，用户可以基于某个特定的话题或者事件，创建一个临时的社交空间。比如说，[举例] 你在看**世界杯**，你可以创建一个"世界杯吐槽气泡"，其他看球的人可以加入进来一起聊。
+
+但是！[加重语气] 这个气泡是有**生命周期**的。可能是24小时，也可能是一周，时间到了，气泡就自动消失了，里面的所有聊天记录、用户关系，全部清零。
+
+而且在气泡里面，大家都是用**临时身份**，你可以叫"看球不喝酒"，他可以叫"梅西真球迷"，[笑] 反正出了这个气泡，谁也不认识谁。
+
+[清嗓子] 当然啦，这只是一个初步的想法，具体怎么实现，还需要更多的讨论和验证。
+
+但我觉得吧，[语速放缓] 这次调研给我最大的启发是：**我们真的需要重新思考社交产品的本质了**。
+
+以前我们总觉得，社交就是要建立连接，越紧密越好。但对于新一代的用户来说，[停顿] 也许**适度的距离**和**恰到好处的连接**，才是他们真正需要的。
+
+[长时间停顿，约4秒]
+
+嗯，我的分享就到这里。大家有什么想法，咱们可以讨论讨论。谢谢！
+```
+
+## 10. 常见问题处理指南
+
+### 10.1 口音和方言处理
+- **轻微口音**：按标准普通话转录，不刻意模仿口音
+- **方言词汇**：保留原词，必要时在括号中注释
+- **严重口音**：优先确保意思准确，可在开头说明
+
+### 10.2 语速异常处理
+- **极快语速**：正常转录，但标注[语速极快]
+- **极慢语速**：去除过多的"嗯"、"啊"，保持可读性
+- **忽快忽慢**：在变化处标注语速变化
+
+### 10.3 情绪表达处理
+- **情绪激动**：通过标点和标注体现，如[激动]
+- **声音哽咽**：标注[哽咽]，继续转录可辨识内容
+- **愤怒语气**：适当使用感叹号，必要时标注[愤怒]
+
+### 10.4 技术故障处理
+- **音频中断**：标注[音频中断，约X秒]
+- **杂音干扰**：标注[背景噪音较大]，尽力转录
+- **回声问题**：正常转录，但在开头说明音质问题
+
+## 11. 持续优化建议
+
+### 11.1 个人能力提升
+1. **建立术语库**：积累各领域专业术语
+2. **训练速记**：提高信息捕捉效率
+3. **培养语感**：增强对语言节奏的把握
+4. **学习新知**：扩展知识面，提高理解力
+
+### 11.2 质量改进循环
+1. **收集反馈**：了解用户对转录文本的意见
+2. **分析问题**：找出常见的错误类型
+3. **优化方法**：针对性地改进转录技巧
+4. **验证效果**：通过对比检验改进效果
+
+### 11.3 工具辅助建议
+1. **术语表**：建立常用专业术语快速查询表
+2. **模板库**：积累不同场景的转录模板
+3. **检查清单**：制作个性化的质量检查清单
+4. **案例集**：收集优秀转录案例供参考
+
+## 结语
+
+高质量的语音转录不仅是文字记录，更是信息的重构和价值的提炼。通过遵循本规范，你将能够产出既忠实于原声又便于阅读理解的专业转录文档。
+
+记住：**好的转录者是信息的桥梁，连接说话者的思想与读者的理解。**
 
 --- File: README.md ---
 <div align="center">
@@ -10574,15 +15173,18 @@ class ProposalService(BaseService):
         return descriptions.get(section, f'{section}的详细内容')
 
 --- File: services/transcription_service.py ---
-#!/usr/bin/env python
+# ==============================================================================
+# File: services/transcription_service.py (修改后)
+# ==============================================================================
+# !/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 文件路径: smart_proposal_engine/services/transcription_service.py
 功能说明: 音频转录服务模块，负责处理音频文件的转录和优化
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.1.0
 """
 
 import os
@@ -10595,8 +15197,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union, Literal
 from dataclasses import dataclass
 from pathlib import Path
-
-import google.generativeai as genai
 
 # 添加项目根目录到系统路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10639,7 +15239,7 @@ class TextOptimizer:
         start_time = time.time()
 
         if progress_callback:
-            progress_callback("正在调用Gemini进行文本优化...")
+            progress_callback("正在调用AI进行文本优化...")
 
         try:
             # 获取优化模板
@@ -10703,7 +15303,6 @@ class AudioProcessor:
         """获取音频文件时长（分钟）"""
         if not self.pydub_available:
             return None
-
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(file_path)
@@ -10717,7 +15316,6 @@ class AudioProcessor:
         """获取音频文件时长（秒）"""
         if not self.pydub_available:
             return None
-
         try:
             from pydub import AudioSegment
             audio = AudioSegment.from_file(file_path)
@@ -10731,7 +15329,6 @@ class AudioProcessor:
         """将音频文件按分钟分割成多个片段"""
         if not self.pydub_available:
             return [(file_path, 0, 0)]
-
         try:
             from pydub import AudioSegment
             from pydub.silence import detect_silence
@@ -10740,55 +15337,37 @@ class AudioProcessor:
             audio = AudioSegment.from_file(file_path)
             total_duration = len(audio)
             max_duration_ms = max_duration_minutes * 60 * 1000
-
             if total_duration <= max_duration_ms:
                 return [(file_path, 0, total_duration / 1000)]
 
             os.makedirs(self.temp_folder, exist_ok=True)
-
             print("正在检测静音片段以优化分割点...")
-            silence_chunks = detect_silence(
-                audio,
-                min_silence_len=self.min_silence_length,
-                silence_thresh=self.silence_threshold
-            )
-
+            silence_chunks = detect_silence(audio, min_silence_len=self.min_silence_length,
+                                            silence_thresh=self.silence_threshold)
             segments = []
             current_start = 0
             segment_index = 0
-
             while current_start < total_duration:
                 ideal_end = min(current_start + max_duration_ms, total_duration)
                 best_split_point = ideal_end
                 search_window = 30000
-
                 for silence_start, silence_end in silence_chunks:
                     if ideal_end - search_window <= silence_start <= ideal_end + search_window:
                         best_split_point = silence_start
                         break
-
                 if best_split_point >= total_duration - 5000:
                     best_split_point = total_duration
 
                 segment = audio[current_start:best_split_point]
                 segment_filename = f"segment_{segment_index:03d}.m4a"
                 segment_path = os.path.join(self.temp_folder, segment_filename)
-
                 print(f"正在导出片段 {segment_index + 1}: {current_start / 1000:.1f}s - {best_split_point / 1000:.1f}s")
                 segment.export(segment_path, format="mp4", codec="aac")
-
-                segments.append((
-                    segment_path,
-                    current_start / 1000,
-                    best_split_point / 1000
-                ))
-
+                segments.append((segment_path, current_start / 1000, best_split_point / 1000))
                 current_start = best_split_point
                 segment_index += 1
-
             print(f"音频分割完成，共生成 {len(segments)} 个片段")
             return segments
-
         except Exception as e:
             print(f"音频分割失败：{e}")
             return [(file_path, 0, 0)]
@@ -10812,59 +15391,44 @@ class SpeakerAnalyzer:
         self.next_global_speaker_id = 1
 
     def extract_speakers(self, text: str) -> List[str]:
-        """从文本中提取说话人标识"""
         speaker_pattern = r'(说话人[A-Z]|说话人\d+|发言人[A-Z]|发言人\d+|Speaker [A-Z]|Speaker \d+)(?=[:：])'
         speakers = list(set(re.findall(speaker_pattern, text)))
         return speakers
 
     def extract_speaker_characteristics(self, text: str, speaker: str) -> List[str]:
-        """提取说话人的语言特征"""
         characteristics = []
-
         pattern = f'{re.escape(speaker)}[:：](.*?)(?=(说话人|发言人|Speaker|$))'
         matches = re.findall(pattern, text, re.DOTALL)
-
         if matches:
-            combined_text = ' '.join(matches)
-
-            # 提取常用词
+            combined_text = ' '.join(str(m) for m in matches)
             words = re.findall(r'[\u4e00-\u9fa5]+', combined_text)
             word_freq = {}
             for word in words:
                 if len(word) >= 2:
                     word_freq[word] = word_freq.get(word, 0) + 1
-
             frequent_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
             if frequent_words:
                 characteristics.append(f"常用词：{', '.join([w[0] for w in frequent_words])}")
-
-            # 语言特征分析
             if '嗯' in combined_text or '啊' in combined_text or '呃' in combined_text:
                 characteristics.append("有口头禅")
             if '请' in combined_text or '谢谢' in combined_text:
                 characteristics.append("礼貌用语多")
             if '我觉得' in combined_text or '我认为' in combined_text:
                 characteristics.append("主观表达多")
-
         return characteristics
 
     def map_speakers_across_segments(self, segments: List[TranscriptionSegment]) -> Dict[str, str]:
-        """跨片段映射说话人，保持一致性"""
         print("\n正在分析说话人特征以保持一致性...")
-
         for segment in segments:
             for speaker in segment.speakers:
                 characteristics = self.extract_speaker_characteristics(segment.text, speaker)
-
                 best_match = None
                 best_score = 0
-
                 for global_speaker, char_list in self.speaker_characteristics.items():
                     score = len(set(characteristics) & set(char_list))
                     if score > best_score:
                         best_score = score
                         best_match = global_speaker
-
                 if best_score >= 2:
                     self.global_speaker_map[f"{segment.segment_index}_{speaker}"] = best_match
                     self.speaker_characteristics[best_match].extend(characteristics)
@@ -10874,36 +15438,22 @@ class SpeakerAnalyzer:
                     self.next_global_speaker_id += 1
                     self.global_speaker_map[f"{segment.segment_index}_{speaker}"] = global_speaker
                     self.speaker_characteristics[global_speaker] = characteristics
-
         return self.global_speaker_map
 
     def apply_speaker_mapping(self, segment: TranscriptionSegment, mapping: Dict[str, str]) -> str:
-        """应用说话人映射到转录文本"""
         text = segment.text
-
         for speaker in segment.speakers:
             segment_key = f"{segment.segment_index}_{speaker}"
             if segment_key in mapping:
                 global_speaker = mapping[segment_key]
                 text = text.replace(f"{speaker}:", f"{global_speaker}:")
                 text = text.replace(f"{speaker}：", f"{global_speaker}：")
-
         return text
 
 
 class TranscriptionService(BaseService):
     """
     音频转录服务
-
-    主要功能:
-    - 支持多种音频格式的转录
-    - 支持超长音频自动分割
-    - 支持多人对话识别
-    - 支持文本优化
-
-    使用示例:
-        service = TranscriptionService()
-        result = service.process(audio_file, options)
     """
 
     def __init__(self):
@@ -10918,13 +15468,10 @@ class TranscriptionService(BaseService):
         self.delete_uploaded_files = True
 
     def get_available_templates(self) -> List[str]:
-        """获取可用的转录优化模板"""
         return self.prompt_manager.list_templates('transcription')
 
     def validate_input(self, input_data: Union[str, bytes, Path]) -> bool:
-        """验证输入是否为支持的音频格式"""
         if isinstance(input_data, str):
-            # 检查文件扩展名
             supported_formats = ['.m4a', '.mp3', '.wav', '.aac', '.ogg', '.flac', '.mp4']
             return any(input_data.lower().endswith(fmt) for fmt in supported_formats)
         return True
@@ -10933,25 +15480,7 @@ class TranscriptionService(BaseService):
                 input_data: Union[str, bytes, Path],
                 template: Optional[str] = None,
                 options: Optional[Dict] = None) -> ProcessingResult:
-        """
-        处理音频文件转录
-
-        Args:
-            input_data: 音频文件路径或数据
-            template: 转录模板（未使用，保持接口一致）
-            options: 处理选项
-                - enable_speaker_diarization: 是否启用说话人识别
-                - maintain_speaker_consistency: 是否保持说话人一致性
-                - max_segment_duration_minutes: 最大片段时长（分钟）
-                - enable_text_optimization: 是否启用文本优化
-                - mode: 运行模式 ("standard", "enhanced")
-
-        Returns:
-            ProcessingResult: 处理结果
-        """
         start_time = time.time()
-
-        # 解析选项
         options = options or {}
         enable_speaker_diarization = options.get('enable_speaker_diarization', True)
         maintain_speaker_consistency = options.get('maintain_speaker_consistency', True)
@@ -10961,9 +15490,7 @@ class TranscriptionService(BaseService):
         progress_callback = options.get('progress_callback', None)
 
         try:
-            # 确保输入是文件路径
             if isinstance(input_data, (bytes, str)) and not os.path.exists(str(input_data)):
-                # 如果是字节数据，先保存为临时文件
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.m4a') as tmp_file:
                     if isinstance(input_data, bytes):
                         tmp_file.write(input_data)
@@ -10971,74 +15498,40 @@ class TranscriptionService(BaseService):
             else:
                 file_path = str(input_data)
 
-            # 初始化处理器
             self.audio_processor = AudioProcessor(self.temp_folder)
-            if enable_text_optimization:
-                self.text_optimizer = TextOptimizer(self.model_interface, self.prompt_manager)
-            if enable_speaker_diarization and maintain_speaker_consistency:
-                self.speaker_analyzer = SpeakerAnalyzer()
+            if enable_text_optimization: self.text_optimizer = TextOptimizer(self.model_interface, self.prompt_manager)
+            if enable_speaker_diarization and maintain_speaker_consistency: self.speaker_analyzer = SpeakerAnalyzer()
 
-            # 获取文件信息
             file_size = os.path.getsize(file_path)
             duration_minutes = self.audio_processor.get_audio_duration(file_path)
             duration_seconds = duration_minutes * 60 if duration_minutes else None
 
-            # 执行转录
-            transcribed_text, metadata = self._transcribe_audio(
-                file_path=file_path,
-                duration_minutes=duration_minutes,
-                enable_speaker_diarization=enable_speaker_diarization,
-                maintain_speaker_consistency=maintain_speaker_consistency,
-                max_segment_duration_minutes=max_segment_duration_minutes,
-                enable_text_optimization=enable_text_optimization,
-                progress_callback=progress_callback
-            )
+            transcribed_text, metadata = self._transcribe_audio(file_path, duration_minutes, enable_speaker_diarization,
+                                                                maintain_speaker_consistency,
+                                                                max_segment_duration_minutes, enable_text_optimization,
+                                                                progress_callback)
 
-            # 构建元数据
-            metadata.update({
-                'original_file': os.path.basename(file_path),
-                'file_size': format_file_size(file_size),
-                'duration': format_duration(duration_seconds) if duration_seconds else '未知',
-                'processing_mode': mode,
-                'enable_text_optimization': enable_text_optimization
-            })
+            metadata.update({'original_file': os.path.basename(file_path), 'file_size': format_file_size(file_size),
+                             'duration': format_duration(duration_seconds) if duration_seconds else '未知',
+                             'processing_mode': mode, 'enable_text_optimization': enable_text_optimization})
 
-            # 统计说话人信息
             if transcribed_text and enable_speaker_diarization:
                 speakers = self.speaker_analyzer.extract_speakers(transcribed_text) if self.speaker_analyzer else []
-                metadata['speakers_count'] = len(speakers)
+                metadata['speakers_count'] = len(speakers);
                 metadata['speakers'] = sorted(speakers)
 
             processing_time = time.time() - start_time
-
-            return ProcessingResult(
-                content=transcribed_text,
-                metadata=metadata,
-                source_type='audio',
-                processing_time=processing_time,
-                model_used=metadata.get('model_used', ''),
-                tokens_consumed={
-                    'input': metadata.get('input_tokens', 0),
-                    'output': metadata.get('output_tokens', 0),
-                    'total': metadata.get('total_tokens', 0)
-                }
-            )
-
+            return ProcessingResult(content=transcribed_text, metadata=metadata, source_type='audio',
+                                    processing_time=processing_time, model_used=metadata.get('model_used', ''),
+                                    tokens_consumed={'input': metadata.get('input_tokens', 0),
+                                                     'output': metadata.get('output_tokens', 0),
+                                                     'total': metadata.get('total_tokens', 0)})
         except Exception as e:
-            processing_time = time.time() - start_time
-            return ProcessingResult(
-                content='',
-                metadata={'error': str(e)},
-                source_type='audio',
-                processing_time=processing_time,
-                model_used='',
-                tokens_consumed={},
-                error=str(e)
-            )
+            return ProcessingResult(content='', metadata={'error': str(e)}, source_type='audio',
+                                    processing_time=time.time() - start_time, model_used='', tokens_consumed={},
+                                    error=str(e))
         finally:
-            # 清理资源
-            if self.audio_processor:
-                self.audio_processor.cleanup_temp_files()
+            if self.audio_processor: self.audio_processor.cleanup_temp_files()
 
     def _transcribe_audio(self,
                           file_path: str,
@@ -11048,89 +15541,52 @@ class TranscriptionService(BaseService):
                           max_segment_duration_minutes: int,
                           enable_text_optimization: bool,
                           progress_callback) -> Tuple[str, Dict]:
-        """内部方法：执行音频转录"""
-
         total_input_tokens = 0
         total_output_tokens = 0
         model_used = self.model_interface.get_model_name('transcription')
 
-        # 判断是否需要分割
         if duration_minutes and duration_minutes > max_segment_duration_minutes:
-            if progress_callback:
-                progress_callback(f"检测到长音频文件（{format_duration(duration_minutes * 60)}），将进行分段处理...")
-
+            if progress_callback: progress_callback(
+                f"检测到长音频文件（{format_duration(duration_minutes * 60)}），将进行分段处理...")
             segments_info = self.audio_processor.split_audio(file_path, max_segment_duration_minutes)
-
             if len(segments_info) == 1:
-                # 无需分割
-                transcribed_text, tokens = self._transcribe_single_segment(
-                    segments_info[0][0],
-                    enable_speaker_diarization,
-                    progress_callback
-                )
+                transcribed_text, tokens = self._transcribe_single_segment(segments_info[0][0],
+                                                                           enable_speaker_diarization,
+                                                                           progress_callback)
                 total_input_tokens += tokens['input']
                 total_output_tokens += tokens['output']
             else:
-                # 多段处理
                 transcription_segments = []
                 for i, (segment_path, start_time, end_time) in enumerate(segments_info):
-                    if progress_callback:
-                        progress_callback(f"正在处理片段 {i + 1}/{len(segments_info)}...")
-
-                    segment_text, tokens = self._transcribe_single_segment(
-                        segment_path,
-                        enable_speaker_diarization,
-                        progress_callback
-                    )
-
+                    if progress_callback: progress_callback(f"正在处理片段 {i + 1}/{len(segments_info)}...")
+                    segment_text, tokens = self._transcribe_single_segment(segment_path, enable_speaker_diarization,
+                                                                           progress_callback)
                     total_input_tokens += tokens['input']
                     total_output_tokens += tokens['output']
-
                     if segment_text:
-                        segment = TranscriptionSegment(
-                            segment_index=i,
-                            start_time=start_time,
-                            end_time=end_time,
-                            text=segment_text,
-                            speakers=self.speaker_analyzer.extract_speakers(
-                                segment_text) if self.speaker_analyzer else [],
-                            segment_id=f"seg{i:03d}"
-                        )
+                        segment = TranscriptionSegment(i, start_time, end_time, segment_text,
+                                                       self.speaker_analyzer.extract_speakers(
+                                                           segment_text) if self.speaker_analyzer else [],
+                                                       f"seg{i:03d}")
                         transcription_segments.append(segment)
-
-                    if i < len(segments_info) - 1:
-                        time.sleep(3)
-
-                # 处理说话人一致性
-                speaker_mapping = {}
-                if maintain_speaker_consistency and self.speaker_analyzer and transcription_segments:
-                    speaker_mapping = self.speaker_analyzer.map_speakers_across_segments(transcription_segments)
-
-                # 合并结果
+                    if i < len(segments_info) - 1: time.sleep(3)
+                speaker_mapping = self.speaker_analyzer.map_speakers_across_segments(
+                    transcription_segments) if maintain_speaker_consistency and self.speaker_analyzer and transcription_segments else {}
                 transcribed_text = self._merge_segments(transcription_segments, speaker_mapping, duration_minutes)
         else:
-            # 短音频直接处理
-            transcribed_text, tokens = self._transcribe_single_segment(
-                file_path,
-                enable_speaker_diarization,
-                progress_callback
-            )
+            transcribed_text, tokens = self._transcribe_single_segment(file_path, enable_speaker_diarization,
+                                                                       progress_callback)
             total_input_tokens += tokens['input']
             total_output_tokens += tokens['output']
 
-        # 文本优化
         original_text = transcribed_text
         if enable_text_optimization and self.text_optimizer and transcribed_text:
-            optimized_text, opt_stats = self.text_optimizer.optimize_transcript(
-                transcribed_text,
-                progress_callback
-            )
+            optimized_text, opt_stats = self.text_optimizer.optimize_transcript(transcribed_text, progress_callback)
             if not opt_stats.get('error'):
                 transcribed_text = optimized_text
                 total_input_tokens += opt_stats.get('input_tokens', 0)
                 total_output_tokens += opt_stats.get('output_tokens', 0)
 
-        # 构建元数据
         metadata = {
             'model_used': model_used,
             'input_tokens': total_input_tokens,
@@ -11138,19 +15594,12 @@ class TranscriptionService(BaseService):
             'total_tokens': total_input_tokens + total_output_tokens,
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
-
         if enable_text_optimization:
             metadata['original_text'] = original_text
             metadata['optimized_text'] = transcribed_text
 
-        # 计算费用
-        cost = self.model_interface.calculate_cost(
-            total_input_tokens,
-            total_output_tokens,
-            'transcription'
-        )
-        metadata['estimated_cost'] = cost
-
+        metadata['estimated_cost'] = self.model_interface.calculate_cost(total_input_tokens, total_output_tokens,
+                                                                         'transcription')
         return transcribed_text, metadata
 
     def _transcribe_single_segment(self,
@@ -11158,84 +15607,52 @@ class TranscriptionService(BaseService):
                                    enable_speaker_diarization: bool,
                                    progress_callback,
                                    retry_count: int = 0) -> Tuple[str, Dict[str, int]]:
-        """转录单个音频片段"""
-
-        audio_file = None
-
+        uploaded_file_obj = None
         try:
-            # 上传文件
             if progress_callback:
-                progress_callback("正在上传文件到 Google...")
+                progress_callback("正在上传文件...")
 
-            try:
-                audio_file = genai.upload_file(path=file_path)
-            except Exception as e:
-                if retry_count < self.max_retries:
-                    time.sleep(2 ** retry_count)
-                    return self._transcribe_single_segment(
-                        file_path, enable_speaker_diarization,
-                        progress_callback, retry_count + 1
-                    )
-                else:
-                    raise Exception(f"文件上传失败: {e}")
+            if not self.model_interface.provider_client:
+                raise RuntimeError("模型接口未正确初始化，无法找到provider client。")
 
-            # 等待文件处理
-            while audio_file.state.name == "PROCESSING":
+            provider_client = self.model_interface.provider_client
+            uploaded_file_obj = provider_client.upload_file(file_path)
+
+            while provider_client.get_file_state(uploaded_file_obj) == "PROCESSING":
                 time.sleep(10)
-                audio_file = genai.get_file(audio_file.name)
 
-            if audio_file.state.name == "FAILED":
-                raise Exception(f"文件处理失败: {audio_file.state}")
+            if provider_client.get_file_state(uploaded_file_obj) == "FAILED":
+                raise Exception(f"文件处理失败: {uploaded_file_obj}")
 
-            # 获取转录提示词
-            if enable_speaker_diarization:
-                prompt = self.prompt_manager.get_template('transcription', 'multi_speaker')
-            else:
-                prompt = self.prompt_manager.get_template('transcription', 'single_speaker')
+            prompt_name = 'multi_speaker' if enable_speaker_diarization else 'single_speaker'
+            prompt = self.prompt_manager.get_template('transcription', prompt_name)
 
             if progress_callback:
-                progress_callback(f"正在调用模型进行转录...")
+                progress_callback("正在调用模型进行转录...")
 
-            # 调用模型
-            response, stats = self.model_interface.generate_content(
-                [prompt, audio_file],
-                model_type='transcription'
-            )
+            response, stats = self.model_interface.generate_content([prompt, uploaded_file_obj],
+                                                                    model_type='transcription')
 
-            return response, {
-                'input': stats.get('input_tokens', 0),
-                'output': stats.get('output_tokens', 0)
-            }
+            return response, {'input': stats.get('input_tokens', 0), 'output': stats.get('output_tokens', 0)}
 
         except Exception as e:
             if retry_count < self.max_retries:
                 time.sleep(2 ** retry_count)
-                return self._transcribe_single_segment(
-                    file_path, enable_speaker_diarization,
-                    progress_callback, retry_count + 1
-                )
+                return self._transcribe_single_segment(file_path, enable_speaker_diarization, progress_callback,
+                                                       retry_count + 1)
             else:
                 raise Exception(f"转录失败: {e}")
-
         finally:
-            # 清理上传的文件
-            if audio_file and self.delete_uploaded_files:
-                try:
-                    genai.delete_file(audio_file.name)
-                except:
-                    pass
+            if uploaded_file_obj and self.delete_uploaded_files and self.model_interface.provider_client:
+                self.model_interface.provider_client.delete_file(uploaded_file_obj)
 
     def _merge_segments(self,
                         segments: List[TranscriptionSegment],
                         speaker_mapping: Dict[str, str],
                         duration_minutes: Optional[float]) -> str:
-        """合并转录片段"""
         if not segments:
             return ""
-
         final_text_parts = []
-
-        # 添加摘要信息
         if speaker_mapping:
             unique_speakers = set(speaker_mapping.values())
             summary = f"===== 转录摘要 =====\n"
@@ -11245,82 +15662,38 @@ class TranscriptionService(BaseService):
             summary += "=" * 50 + "\n"
             final_text_parts.append(summary)
 
-        # 处理每个片段
         for segment in segments:
-            # 添加时间戳标记
             time_marker = f"\n[{format_duration(segment.start_time)} - {format_duration(segment.end_time)}]\n"
             final_text_parts.append(time_marker)
-
-            # 应用说话人映射
             if speaker_mapping and self.speaker_analyzer:
                 mapped_text = self.speaker_analyzer.apply_speaker_mapping(segment, speaker_mapping)
                 final_text_parts.append(mapped_text)
             else:
                 final_text_parts.append(segment.text)
-
         return "\n".join(final_text_parts)
 
     def process_web_text(self, text: str, options: Optional[Dict] = None) -> ProcessingResult:
-        """
-        处理Web输入的文本（预留接口）
-
-        Args:
-            text: 输入的文本内容
-            options: 处理选项
-
-        Returns:
-            ProcessingResult: 处理结果
-        """
-        # 对于纯文本输入，如果需要优化，可以直接调用文本优化器
         start_time = time.time()
         options = options or {}
-
         try:
             if options.get('enable_text_optimization', False):
                 if not self.text_optimizer:
                     self.text_optimizer = TextOptimizer(self.model_interface, self.prompt_manager)
-
-                optimized_text, stats = self.text_optimizer.optimize_transcript(
-                    text,
-                    options.get('progress_callback')
-                )
-
-                metadata = {
-                    'original_text': text,
-                    'optimized_text': optimized_text,
-                    'optimization_stats': stats,
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-
+                optimized_text, stats = self.text_optimizer.optimize_transcript(text, options.get('progress_callback'))
+                metadata = {'original_text': text, 'optimized_text': optimized_text, 'optimization_stats': stats,
+                            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 content = optimized_text
             else:
                 content = text
-                metadata = {
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
+                metadata = {'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
             processing_time = time.time() - start_time
-
-            return ProcessingResult(
-                content=content,
-                metadata=metadata,
-                source_type='text',
-                processing_time=processing_time,
-                model_used='',
-                tokens_consumed={}
-            )
-
+            return ProcessingResult(content=content, metadata=metadata, source_type='text',
+                                    processing_time=processing_time, model_used='', tokens_consumed={})
         except Exception as e:
             processing_time = time.time() - start_time
-            return ProcessingResult(
-                content=text,
-                metadata={'error': str(e)},
-                source_type='text',
-                processing_time=processing_time,
-                model_used='',
-                tokens_consumed={},
-                error=str(e)
-            )
+            return ProcessingResult(content=text, metadata={'error': str(e)}, source_type='text',
+                                    processing_time=processing_time, model_used='', tokens_consumed={}, error=str(e))
 
 --- File: utils/__init__.py ---
 

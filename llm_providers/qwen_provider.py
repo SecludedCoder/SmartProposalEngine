@@ -1,7 +1,7 @@
 # ==============================================================================
-# File: core/llm_providers/qwen_provider.py (新增文件)
+# File: core/llm_providers/qwen_provider.py (修改后)
 # ==============================================================================
-# !/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 文件路径: smart_proposal_engine/core/llm_providers/qwen_provider.py
@@ -10,7 +10,7 @@
           包括初始化、内容生成、流式处理、Token计算以及错误处理。
 作者: SmartProposal Team
 创建日期: 2025-06-29
-版本: 1.0.0
+版本: 1.1.0
 """
 
 import os
@@ -25,14 +25,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import dashscope
 except ImportError:
-    # 友好提示，避免在未安装依赖时程序崩溃
     raise ImportError(
         "通义千问的依赖库 'dashscope' 未安装。"
         "请运行 'pip install \"dashscope>=1.16.1\"' 进行安装。"
     )
 
 from .base_provider import BaseProvider
-
 
 class QwenProvider(BaseProvider):
     """
@@ -71,7 +69,7 @@ class QwenProvider(BaseProvider):
                  prompt: Union[str, List[Any]],
                  model_name: str,
                  generation_config: Optional[Dict[str, Any]] = None,
-                 safety_settings: Optional[List[Dict[str, Any]]] = None,  # Qwen暂不直接使用此格式的safety_settings
+                 safety_settings: Optional[List[Dict[str, Any]]] = None,
                  request_options: Optional[Dict[str, Any]] = None
                  ) -> Tuple[str, Dict[str, Any]]:
         """
@@ -79,11 +77,8 @@ class QwenProvider(BaseProvider):
         """
         if not self.is_initialized:
             raise RuntimeError("Qwen Provider尚未初始化。")
-
-        # Qwen API通常需要一个字符串prompt，我们将列表转换为字符串
         if isinstance(prompt, list):
             prompt = "\n".join(str(p) for p in prompt)
-
         return self._generate_with_retry(
             prompt, model_name, generation_config, request_options, retry_count=0
         )
@@ -96,10 +91,8 @@ class QwenProvider(BaseProvider):
                              retry_count: int) -> Tuple[str, Dict[str, Any]]:
         """内部方法，包含重试逻辑的生成实现。"""
         try:
-            # 合并和准备参数
             final_gen_config = generation_config or {}
             timeout = request_options.get('timeout', 600) if request_options else 600
-
             response = dashscope.Generation.call(
                 model=model_name,
                 prompt=prompt,
@@ -107,7 +100,6 @@ class QwenProvider(BaseProvider):
                 timeout=timeout,
                 **final_gen_config
             )
-
             if response.status_code == HTTPStatus.OK:
                 response_text = response.output.text
                 stats = {
@@ -116,9 +108,7 @@ class QwenProvider(BaseProvider):
                 }
                 return response_text, stats
             else:
-                # API返回非200状态码
                 raise Exception(f"API Error: {response.code} - {response.message}")
-
         except Exception as e:
             error_msg = str(e)
             if retry_count < self.max_retries and self._should_retry(error_msg):
@@ -128,7 +118,6 @@ class QwenProvider(BaseProvider):
                 return self._generate_with_retry(
                     prompt, model_name, generation_config, request_options, retry_count + 1
                 )
-            # 重试次数用尽或遇到不可重试错误
             raise Exception(f"模型调用失败: {error_msg}")
 
     def stream_generate(self,
@@ -142,10 +131,8 @@ class QwenProvider(BaseProvider):
         """
         if not self.is_initialized:
             raise RuntimeError("Qwen Provider尚未初始化。")
-
         if isinstance(prompt, list):
             prompt = "\n".join(str(p) for p in prompt)
-
         try:
             final_gen_config = generation_config or {}
             response_stream = dashscope.Generation.call(
@@ -154,16 +141,13 @@ class QwenProvider(BaseProvider):
                 stream=True,
                 **final_gen_config
             )
-
             complete_response = ""
             last_chunk = None
             for chunk in response_stream:
                 if chunk.status_code == HTTPStatus.OK:
                     partial_text = chunk.output.text
-                    # dashscope流式返回的是累积文本，需要取增量部分
                     new_text = partial_text[len(complete_response):]
                     complete_response = partial_text
-
                     if callback and new_text:
                         try:
                             callback(new_text)
@@ -172,21 +156,17 @@ class QwenProvider(BaseProvider):
                     last_chunk = chunk
                 else:
                     raise Exception(f"流式API错误: {chunk.code} - {chunk.message}")
-
             if last_chunk:
                 stats = {
                     'input_tokens': last_chunk.usage.input_tokens,
                     'output_tokens': last_chunk.usage.output_tokens
                 }
             else:
-                # 如果流为空，则估算
                 stats = {
                     'input_tokens': self._estimate_tokens(prompt),
                     'output_tokens': 0
                 }
-
             return complete_response, stats
-
         except Exception as e:
             raise Exception(f"流式生成失败: {str(e)}")
 
@@ -197,7 +177,6 @@ class QwenProvider(BaseProvider):
         if not self.is_initialized:
             print("警告: Qwen Provider未初始化，使用估算方法计算token。")
             return self._estimate_tokens(text)
-
         try:
             response = dashscope.Tokenization.call(
                 model=model_name,
@@ -212,9 +191,33 @@ class QwenProvider(BaseProvider):
             print(f"调用DashScope API计算Token时发生异常: {e}，使用估算值。")
             return self._estimate_tokens(text)
 
+    # --- 新增文件处理方法的具体实现 ---
+    def upload_file(self, file_path: str) -> Any:
+        """
+        Qwen/DashScope目前不要求预上传文件进行多模态处理，
+        而是直接在调用时传入本地文件路径或URL。
+        因此，此方法直接返回文件路径本身作为“文件对象”。
+        """
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"文件不存在: {file_path}")
+        return file_path
+
+    def get_file_state(self, file_object: Any) -> str:
+        """
+        由于Qwen不上传文件，我们假定文件总是可用的。
+        """
+        if isinstance(file_object, str) and os.path.exists(file_object):
+            return "ACTIVE"
+        return "FAILED"
+
+    def delete_file(self, file_object: Any) -> None:
+        """
+        由于Qwen不上传文件到云端，此方法无需执行任何操作。
+        """
+        pass
+
     def _should_retry(self, error_msg: str) -> bool:
         """判断错误是否应该重试"""
-        # DashScope 常见的可重试错误码或信息
         retry_keywords = [
             'throttling', 'qps rate-limit', 'service is unavailable', 'timeout',
             'serviceunavailable', 'systemerror', 'internalservererror',
@@ -227,16 +230,11 @@ class QwenProvider(BaseProvider):
         """后备方法：估算文本的token数量"""
         if not isinstance(text, str):
             text = str(text)
-
-        # Qwen的分词对中文更友好，简单估算可以认为1个汉字约等于1个token
         chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
         other_chars = len(text) - chinese_chars
-        # 其他字符（英文、数字、符号）大致按每4个字符1个token估算
         estimated_tokens = chinese_chars + (other_chars // 4)
         return int(estimated_tokens) + 1
 
-
-# 模块独立测试代码
 if __name__ == "__main__":
     print("这是一个具体的Provider实现文件，不应直接运行。")
     print("请通过 ModelInterface 来调用。")

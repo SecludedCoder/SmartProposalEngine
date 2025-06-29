@@ -24,9 +24,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 【修改】导入新的Provider类，不再直接导入任何具体SDK
-from .llm_providers.base_provider import BaseProvider
-from .llm_providers.gemini_provider import GeminiProvider
-from .llm_providers.qwen_provider import QwenProvider
+from llm_providers.base_provider import BaseProvider
+from llm_providers.gemini_provider import GeminiProvider
+from llm_providers.qwen_provider import QwenProvider
 
 
 class ModelConfig:
