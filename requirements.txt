@@ -1,118 +1,173 @@
+# ==============================================================================
+# File: requirements.txt (基于您的模板完善后)
+# ==============================================================================
 # SmartProposal Engine Requirements
 # Python 3.8+ required
 
+# ------------------------------------------------------------------------------
 # Core Framework
+# ------------------------------------------------------------------------------
 streamlit>=1.29.0,<2.0.0
 streamlit-extras>=0.3.0
 
+# ------------------------------------------------------------------------------
+# AI & LLM Integration
+# ------------------------------------------------------------------------------
 # Google AI
 google-generativeai>=0.3.0,<1.0.0
 
+# 【新增】Alibaba Qwen (DashScope) SDK
+# 这是调用通义千问模型所必需的官方SDK。
+dashscope>=1.16.1
+
+# ------------------------------------------------------------------------------
 # Document Processing
+# ------------------------------------------------------------------------------
 python-docx>=0.8.11,<1.0.0
 PyPDF2>=3.0.0,<4.0.0
 pypdf>=3.17.0  # Alternative PDF library
 python-pptx>=0.6.21  # For future PowerPoint support
 
+# ------------------------------------------------------------------------------
 # Audio Processing
+# ------------------------------------------------------------------------------
 pydub>=0.25.1,<1.0.0
-# Note: pydub requires ffmpeg to be installed separately
+# Note: pydub requires ffmpeg to be installed on the system
 # Install ffmpeg: https://ffmpeg.org/download.html
 
+# ------------------------------------------------------------------------------
 # Data Processing
+# ------------------------------------------------------------------------------
 pandas>=2.0.0,<3.0.0
 numpy>=1.24.0,<2.0.0
 openpyxl>=3.1.0  # For Excel file support
 
+# ------------------------------------------------------------------------------
 # Visualization
+# ------------------------------------------------------------------------------
 plotly>=5.0.0,<6.0.0
 matplotlib>=3.7.0,<4.0.0
 seaborn>=0.12.0  # For enhanced visualizations
 
-# Text Processing
+# ------------------------------------------------------------------------------
+# Text & Web Parsing
+# ------------------------------------------------------------------------------
 markdown>=3.4.0,<4.0.0
 beautifulsoup4>=4.12.0,<5.0.0  # For HTML parsing
 python-multipart>=0.0.6  # For file uploads
 
+# ------------------------------------------------------------------------------
 # Utilities
+# ------------------------------------------------------------------------------
 python-dotenv>=1.0.0,<2.0.0
 requests>=2.31.0,<3.0.0
 aiofiles>=23.0.0  # For async file operations
 tqdm>=4.66.0  # For progress bars in CLI
 
-# Development Tools (Optional)
+# ------------------------------------------------------------------------------
+# Development Tools (Optional, for contributors)
+# ------------------------------------------------------------------------------
 black>=23.0.0  # Code formatting
 flake8>=6.0.0  # Linting
 pytest>=7.4.0  # Testing
 pytest-cov>=4.1.0  # Test coverage
 
-# Type Checking (Optional)
+# ------------------------------------------------------------------------------
+# Type Checking (Optional, for contributors)
+# ------------------------------------------------------------------------------
 mypy>=1.5.0
 types-requests>=2.31.0
 
+# ------------------------------------------------------------------------------
 # Security
+# ------------------------------------------------------------------------------
 cryptography>=41.0.0  # For secure operations
 
+# ------------------------------------------------------------------------------
 # Date and Time
+# ------------------------------------------------------------------------------
 python-dateutil>=2.8.0,<3.0.0
 pytz>=2023.3
 
+# ------------------------------------------------------------------------------
 # Configuration
+# ------------------------------------------------------------------------------
 configparser>=6.0.0
 pyyaml>=6.0.1  # For YAML config support
 
+# ------------------------------------------------------------------------------
 # Logging
+# ------------------------------------------------------------------------------
 loguru>=0.7.0  # Enhanced logging
 
+# ------------------------------------------------------------------------------
 # Performance
+# ------------------------------------------------------------------------------
 cachetools>=5.3.0  # For caching
 ujson>=5.8.0  # Fast JSON parsing
 
+# ------------------------------------------------------------------------------
 # File Type Detection
+# ------------------------------------------------------------------------------
 python-magic>=0.4.27  # Better file type detection
 # Note: python-magic requires libmagic
 # On Ubuntu/Debian: sudo apt-get install libmagic1
 # On macOS: brew install libmagic
 # On Windows: pip install python-magic-bin
 
-# Optional OCR Support (for future)
+# ------------------------------------------------------------------------------
+# Optional Future Extensions
+# ------------------------------------------------------------------------------
+# Optional OCR Support (e.g., for images in PDFs)
 # pytesseract>=0.3.10
 # pillow>=10.0.0
 
-# Optional Speech Recognition (for future)
+# Optional Speech Recognition (e.g., for local transcription)
 # SpeechRecognition>=3.10.0
-# whisper>=1.1.10
+# openai-whisper>=20231117
 
-# Environment-specific dependencies
+# ------------------------------------------------------------------------------
+# Environment-specific Dependencies
+# ------------------------------------------------------------------------------
 # Windows users may need:
 # pywin32>=306 ; platform_system == "Windows"
 
-# Production deployment
+# For production deployment
 gunicorn>=21.2.0 ; platform_system != "Windows"
-uvicorn>=0.24.0  # ASGI server
+uvicorn>=0.24.0  # ASGI server for future API
 
+# ------------------------------------------------------------------------------
 # Monitoring (Optional)
+# ------------------------------------------------------------------------------
 # prometheus-client>=0.18.0
 # sentry-sdk>=1.35.0
 
-# Database (for future persistence)
+# ------------------------------------------------------------------------------
+# Database (for future persistence features)
+# ------------------------------------------------------------------------------
 # sqlalchemy>=2.0.0
 # alembic>=1.12.0
 # psycopg2-binary>=2.9.0  # PostgreSQL
 # pymongo>=4.5.0  # MongoDB
 
-# API Development (for future)
+# ------------------------------------------------------------------------------
+# API Development (for future public API)
+# ------------------------------------------------------------------------------
 # fastapi>=0.104.0
 # pydantic>=2.4.0
 
-# Note: To install all dependencies:
+# ==============================================================================
+# Installation Notes:
+#
+# To install all dependencies:
 # pip install -r requirements.txt
-
-# For development environment:
-# pip install -r requirements.txt --upgrade
-
+#
+# For development environment (includes dev tools):
+# You might consider having a separate requirements-dev.txt
+#
 # For production deployment, consider using:
 # pip install --no-cache-dir -r requirements.txt
-
-# To generate a locked requirements file:
+#
+# To generate a locked requirements file for reproducible builds:
 # pip freeze > requirements-lock.txt
+# ==============================================================================

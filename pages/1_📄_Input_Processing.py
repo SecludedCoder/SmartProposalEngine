@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-文件路径: smart_proposal_engine/pages/1_??_Input_Processing.py
+文件路径: smart_proposal_engine/pages/1_📄_Input_Processing.py
 功能说明: 内容输入处理页面
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.1.0
 """
 
 import os
@@ -33,11 +33,12 @@ from utils.format_utils import (
     truncate_text
 )
 from utils.validation_utils import validate_text_input
+from utils.ui_utils import check_api_key_setup  # 引入检查函数
 
 # 页面配置
 st.set_page_config(
     page_title="内容输入处理 - SmartProposal Engine",
-    page_icon="??",
+    page_icon="📄",
     layout="wide"
 )
 
@@ -64,7 +65,7 @@ def initialize_page_state():
 
 def show_file_upload_tab():
     """显示文件上传标签页"""
-    st.markdown("### ?? 文件上传")
+    st.markdown("### 📁 文件上传")
 
     # 支持的格式说明
     col1, col2 = st.columns(2)
@@ -101,12 +102,12 @@ def show_file_upload_tab():
             "文件大小": format_file_size(uploaded_file.size)
         }
 
-        st.markdown("#### ?? 文件信息")
+        st.markdown("#### ℹ️ 文件信息")
         for key, value in file_details.items():
             st.text(f"{key}: {value}")
 
         # 处理选项
-        st.markdown("#### ?? 处理选项")
+        st.markdown("#### ⚙️ 处理选项")
 
         # 根据文件类型显示不同选项
         file_ext = Path(uploaded_file.name).suffix.lower()
@@ -171,13 +172,13 @@ def show_file_upload_tab():
                 )
 
         # 处理按钮
-        if st.button("?? 开始处理", type="primary", use_container_width=True, key="file_upload_process"):
+        if st.button("▶️ 开始处理", type="primary", use_container_width=True, key="file_upload_process"):
             process_uploaded_file(uploaded_file, options)
 
 
 def show_text_input_tab():
     """显示文本输入标签页"""
-    st.markdown("### ?? 文本输入")
+    st.markdown("### ✍️ 文本输入")
 
     st.info("""
     直接粘贴或输入文本内容，适用于：
@@ -202,7 +203,7 @@ def show_text_input_tab():
         st.caption(f"字符数: {char_count:,} | 词数: {word_count:,}")
 
     # 输入选项
-    st.markdown("#### ?? 处理选项")
+    st.markdown("#### ⚙️ 处理选项")
 
     col1, col2 = st.columns(2)
 
@@ -231,7 +232,7 @@ def show_text_input_tab():
             enable_optimization = False
 
     # 处理按钮
-    if st.button("?? 处理文本", type="primary", use_container_width=True, key="text_input_process"):
+    if st.button("▶️ 处理文本", type="primary", use_container_width=True, key="text_input_process"):
         if text_input.strip():
             # 验证文本
             is_valid, message = validate_text_input(
@@ -312,7 +313,7 @@ def process_uploaded_file(uploaded_file, options):
             st.session_state.input_processing['current_progress'] = 100
 
             if result.is_success:
-                status_text.text("? 处理完成！")
+                status_text.text("✅ 处理完成！")
 
                 # 保存结果到会话
                 session_manager.save_result('input_processing', result)
@@ -338,11 +339,11 @@ def process_uploaded_file(uploaded_file, options):
                 st.rerun()
 
             else:
-                status_text.text("? 处理失败")
+                status_text.text("❌ 处理失败")
                 st.error(f"处理失败: {result.error}")
 
         except Exception as e:
-            status_text.text("? 发生错误")
+            status_text.text("❌ 发生错误")
             st.error(f"处理过程中发生错误: {str(e)}")
 
         finally:
@@ -407,7 +408,7 @@ def show_processing_result():
         return
 
     st.markdown("---")
-    st.markdown("### ?? 处理结果")
+    st.markdown("### 📊 处理结果")
 
     # 结果摘要
     col1, col2, col3 = st.columns(3)
@@ -424,14 +425,14 @@ def show_processing_result():
 
     # 元数据显示
     if result.metadata:
-        with st.expander("?? 详细信息", expanded=False):
+        with st.expander("ℹ️ 详细信息", expanded=False):
             # 格式化显示元数据
             for key, value in result.metadata.items():
                 if key not in ['error', 'original_text']:
                     st.text(f"{key}: {value}")
 
     # 内容预览
-    st.markdown("#### ?? 内容预览")
+    st.markdown("#### 📋 内容预览")
 
     # 预览选项
     col1, col2 = st.columns([3, 1])
@@ -468,7 +469,7 @@ def show_processing_result():
         )
 
     # 操作按钮
-    st.markdown("#### ?? 保存和下一步")
+    st.markdown("#### ⏯️ 保存和下一步")
 
     col1, col2, col3 = st.columns(3)
 
@@ -479,7 +480,7 @@ def show_processing_result():
         filename = f"processed_content_{timestamp}.txt"
 
         st.download_button(
-            label="?? 下载结果",
+            label="💾 下载结果",
             data=download_content,
             file_name=filename,
             mime="text/plain",
@@ -489,7 +490,7 @@ def show_processing_result():
 
     with col2:
         # 发送到分析
-        if st.button("?? 发送到深度分析", type="primary", use_container_width=True, key="send_to_analysis"):
+        if st.button("➡️ 发送到深度分析", type="primary", use_container_width=True, key="send_to_analysis"):
             # 保存到会话供下一步使用
             session_manager = st.session_state.session_manager
             session_manager.save_result('transcription', result)
@@ -500,7 +501,7 @@ def show_processing_result():
 
     with col3:
         # 清除结果
-        if st.button("??? 清除结果", use_container_width=True, key="clear_result"):
+        if st.button("🗑️ 清除结果", use_container_width=True, key="clear_result"):
             st.session_state.input_processing['processing_result'] = None
             st.rerun()
 
@@ -513,7 +514,7 @@ def show_processing_history():
         return
 
     st.markdown("---")
-    st.markdown("### ?? 处理历史")
+    st.markdown("### 📜 处理历史")
 
     # 按时间倒序显示
     for idx, item in enumerate(reversed(history[-5:])):  # 只显示最近5条
@@ -531,15 +532,18 @@ def show_processing_history():
 
 def main():
     """主函数"""
+    # 在页面顶部检查API Key设置
+    check_api_key_setup()
+
     # 初始化页面状态
     initialize_page_state()
 
     # 页面标题
-    st.title("?? 内容输入处理")
+    st.title("📄 内容输入处理")
     st.markdown("上传音频或文档文件，或直接输入文本内容进行处理")
 
     # 选择输入方式
-    tab1, tab2 = st.tabs(["?? 文件上传", "?? 文本输入"])
+    tab1, tab2 = st.tabs(["📁 文件上传", "✍️ 文本输入"])
 
     with tab1:
         show_file_upload_tab()
@@ -556,7 +560,7 @@ def main():
 
     # 侧边栏信息
     with st.sidebar:
-        st.markdown("### ?? 使用提示")
+        st.markdown("### 💡 使用提示")
         st.info("""
 **文件上传**：
 - 支持音频和文档文件
@@ -573,7 +577,7 @@ def main():
 """)
 
         # 清理临时文件
-        if st.button("??? 清理临时文件", key="sidebar_cleanup"):
+        if st.button("🗑️ 清理临时文件", key="sidebar_cleanup"):
             session_manager = st.session_state.session_manager
             if session_manager.cleanup_all_temp_files():
                 st.success("临时文件已清理")

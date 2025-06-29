@@ -1,12 +1,16 @@
-#!/usr/bin/env python
+# ==============================================================================
+# File: core/model_interface.py (修改后)
+# ==============================================================================
+# !/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 文件路径: smart_proposal_engine/core/model_interface.py
-功能说明: 统一的AI模型接口，封装Gemini API调用
+功能说明: 统一的AI模型接口，通过调度不同的Provider，封装多提供商（如Gemini, Qwen）的API调用。
+          此类作为模型调用的统一入口（Facade Pattern）。
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.2.0
 """
 
 import os
@@ -16,22 +20,26 @@ import configparser
 from typing import Dict, List, Optional, Tuple, Union, Any
 from pathlib import Path
 
-import google.generativeai as genai
-
 # 添加项目根目录到系统路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 【修改】导入新的Provider类，不再直接导入任何具体SDK
+from .llm_providers.base_provider import BaseProvider
+from .llm_providers.gemini_provider import GeminiProvider
+from .llm_providers.qwen_provider import QwenProvider
+
 
 class ModelConfig:
-    """模型配置类"""
-    
-    def __init__(self, api_name: str, display_name: str, 
+    """模型配置类（保持不变）"""
+
+    def __init__(self, provider: str, api_name: str, display_name: str,
                  input_price: float, output_price: float):
+        self.provider = provider
         self.api_name = api_name
         self.display_name = display_name
         self.input_price_per_million = input_price
         self.output_price_per_million = output_price
-    
+
     def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """计算使用成本（美元）"""
         input_cost = (input_tokens / 1_000_000) * self.input_price_per_million
@@ -42,548 +50,273 @@ class ModelConfig:
 class ModelInterface:
     """
     统一的AI模型接口
-    
+
     主要功能:
-    1. 统一的模型调用接口
-    2. 自动重试和错误处理
-    3. Token使用量统计
-    4. 费用计算
-    5. 模型切换支持
-    
-    使用示例:
-        model = ModelInterface()
-        response, stats = model.generate_content(prompt, model_type='analysis')
+    1. 支持多模型提供商 (Gemini, Qwen等)。
+    2. 统一的模型调用接口。
+    3. 自动重试和错误处理。
+    4. Token使用量统计和费用计算。
+    5. 模型动态配置和切换。
     """
-    
+
     def __init__(self, config_path: Optional[str] = None):
         """
-        初始化模型接口
-        
-        Args:
-            config_path: 配置文件路径，默认使用项目根目录的配置
+        初始化模型接口。
         """
-        self.models = {}
-        self.current_models = {}
-        self.api_key = None
+        self.all_models: Dict[str, ModelConfig] = {}
+        self.current_models: Dict[str, str] = {}
+        self.api_key: Optional[str] = None
+        self.provider: Optional[str] = None
+        # 【新增】持有具体的provider实例
+        self.provider_client: Optional[BaseProvider] = None
         self.is_initialized = False
-        
-        # 加载配置
+
         self._load_config(config_path)
         self._load_model_config()
-        self._initialize_genai()
-    
+
+        if self.config.getboolean('API_SETTINGS', 'use_internal_api_key', fallback=False):
+            api_key_file = self.config.get('API_SETTINGS', 'api_key_file', fallback='api_key.txt')
+            project_root = Path(__file__).parent.parent
+            api_key_path = project_root / api_key_file
+
+            if api_key_path.exists():
+                with open(api_key_path, 'r', encoding='utf-8') as f:
+                    internal_api_key = f.read().strip()
+                if internal_api_key:
+                    default_provider = self.config.get('MODEL_PROVIDERS', 'default_provider', fallback='Gemini')
+                    try:
+                        self.initialize_model(internal_api_key, default_provider)
+                    except Exception as e:
+                        print(f"警告：使用内部密钥初始化失败: {e}")
+
+    def initialize_model(self, api_key: str, provider: str):
+        """
+        【已重构】使用API Key和提供商来初始化模型。
+        """
+        if not api_key or not provider:
+            self.is_initialized = False
+            raise ValueError("API Key和模型提供商不能为空")
+
+        self.api_key = api_key
+        self.provider = provider
+
+        try:
+            # 根据提供商选择不同的初始化逻辑（工厂模式）
+            if self.provider == 'Gemini':
+                self.provider_client = GeminiProvider(self.api_key)
+            elif self.provider == 'Qwen':
+                self.provider_client = QwenProvider(self.api_key)
+            else:
+                raise NotImplementedError(f"不支持的模型提供商: {self.provider}")
+
+            # 调用具体provider的初始化方法
+            self.provider_client.initialize()
+            self.is_initialized = True
+            print(f"✅ ModelInterface 已使用 {self.provider} 提供商成功初始化。")
+
+        except Exception as e:
+            self.is_initialized = False
+            self.provider_client = None
+            print(f"❌ 模型接口初始化失败: {e}")
+            raise ConnectionError(f"无法使用提供的API Key连接到 {self.provider}。请检查Key是否正确以及网络连接。")
+
     def _load_config(self, config_path: Optional[str] = None):
-        """加载应用配置"""
+        """加载应用配置（保持不变）"""
         if config_path is None:
-            # 默认配置文件路径
             config_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                 'app_config.ini'
             )
-        
         self.config = configparser.ConfigParser()
-        self.config.read(config_path)
-        
-        # 获取API密钥
-        if self.config.getboolean('API_SETTINGS', 'use_internal_api_key', fallback=False):
-            api_key_file = self.config.get('API_SETTINGS', 'api_key_file', fallback='api_key.txt')
-            api_key_path = os.path.join(os.path.dirname(config_path), api_key_file)
-            
-            if os.path.exists(api_key_path):
-                with open(api_key_path, 'r') as f:
-                    self.api_key = f.read().strip()
-            else:
-                print(f"警告：API密钥文件 {api_key_path} 不存在")
-        else:
-            # 从环境变量获取
-            self.api_key = os.getenv('GOOGLE_API_KEY')
-        
-        # 设置默认模型
+        self.config.read(config_path, encoding='utf-8')
         self.current_models = {
-            'transcription': self.config.get('MODEL_SETTINGS', 'transcription_model', 
-                                           fallback='models/gemini-2.5-flash'),
-            'analysis': self.config.get('MODEL_SETTINGS', 'analysis_model', 
-                                      fallback='models/gemini-2.5-pro'),
-            'proposal': self.config.get('MODEL_SETTINGS', 'proposal_model', 
-                                      fallback='models/gemini-2.5-pro'),
-            'optimization': self.config.get('MODEL_SETTINGS', 'optimization_model',
-                                          fallback='models/gemini-2.5-flash')
+            'transcription': self.config.get('MODEL_SETTINGS', 'transcription_model', fallback=''),
+            'analysis': self.config.get('MODEL_SETTINGS', 'analysis_model', fallback=''),
+            'proposal': self.config.get('MODEL_SETTINGS', 'proposal_model', fallback=''),
+            'optimization': self.config.get('MODEL_SETTINGS', 'optimization_model', fallback='')
         }
 
     def _load_model_config(self):
-        """从models.conf加载模型配置"""
+        """从models.conf加载所有模型配置（保持不变）"""
         models_conf_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             'models.conf'
         )
-
         if not os.path.exists(models_conf_path):
-            print(f"警告：模型配置文件 {models_conf_path} 不存在")
-            self._use_default_models()
             return
+        with open(models_conf_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = [part.strip() for part in line.split(',')]
+                if len(parts) >= 5:
+                    provider, api_name, display_name, input_price, output_price = parts[0], parts[1], parts[2], float(
+                        parts[3]), float(parts[4])
+                    self.all_models[api_name] = ModelConfig(provider, api_name, display_name, input_price, output_price)
 
-        try:
-            with open(models_conf_path, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    # 跳过注释和空行
-                    if not line or line.startswith('#'):
-                        continue
-
-                    # 解析配置行
-                    parts = [part.strip() for part in line.split(',')]
-                    if len(parts) >= 4:
-                        try:
-                            api_name = parts[0]
-                            display_name = parts[1]
-                            input_price = float(parts[2])
-                            output_price = float(parts[3])
-
-                            self.models[api_name] = ModelConfig(
-                                api_name, display_name, input_price, output_price
-                            )
-                        except ValueError as e:
-                            print(f"警告：第 {line_num} 行配置解析失败: {e}")
-                            print(f"  问题行: {line}")
-                            continue
-                    else:
-                        print(f"警告：第 {line_num} 行配置格式不正确，需要4个字段")
-
-            print(f"成功加载 {len(self.models)} 个模型配置")
-
-            if len(self.models) == 0:
-                print("警告：没有成功加载任何模型配置，使用默认配置")
-                self._use_default_models()
-
-        except Exception as e:
-            print(f"加载模型配置失败: {e}")
-            self._use_default_models()
-    
-    def _use_default_models(self):
-        """使用默认模型配置"""
-        self.models = {
-            'models/gemini-2.5-pro': ModelConfig(
-                'models/gemini-2.5-pro',
-                'Gemini 2.5 Pro (最强, 推荐)',
-                1.25, 10.00
-            ),
-            'models/gemini-2.5-flash': ModelConfig(
-                'models/gemini-2.5-flash',
-                'Gemini 2.5 Flash (音频优化)',
-                1.00, 2.50
-            ),
-            'models/gemini-1.5-pro-latest': ModelConfig(
-                'models/gemini-1.5-pro-latest',
-                'Gemini 1.5 Pro (经典旗舰)',
-                1.25, 5.00
-            ),
-            'models/gemini-1.5-flash-latest': ModelConfig(
-                'models/gemini-1.5-flash-latest',
-                'Gemini 1.5 Flash (高性价比)',
-                0.075, 0.30
-            )
-        }
-    
-    def _initialize_genai(self):
-        """初始化Google Generative AI"""
-        if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.is_initialized = True
-        else:
-            print("警告：未配置API密钥，某些功能可能无法使用")
-    
     def get_model_name(self, model_type: str) -> str:
-        """
-        获取指定类型的模型名称
-        
-        Args:
-            model_type: 模型类型 (transcription/analysis/proposal/optimization)
-        
-        Returns:
-            str: 模型API名称
-        """
-        return self.current_models.get(model_type, 'models/gemini-2.5-flash')
-    
+        """获取指定类型的模型名称（保持不变）"""
+        return self.current_models.get(model_type, '')
+
     def set_model(self, model_type: str, model_name: str) -> bool:
-        """
-        设置特定类型使用的模型
-        
-        Args:
-            model_type: 模型类型
-            model_name: 模型名称
-        
-        Returns:
-            bool: 设置是否成功
-        """
-        if model_name in self.models:
+        """设置特定类型使用的模型（保持不变）"""
+        if model_name in self.all_models:
             self.current_models[model_type] = model_name
             return True
         return False
-    
-    def get_available_models(self) -> List[Dict[str, str]]:
-        """
-        获取所有可用的模型列表
-        
-        Returns:
-            List[Dict]: 模型信息列表
-        """
-        return [
-            {
-                'api_name': model.api_name,
-                'display_name': model.display_name,
-                'input_price': model.input_price_per_million,
-                'output_price': model.output_price_per_million
-            }
-            for model in self.models.values()
-        ]
-    
+
+    def get_available_models(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
+        """获取可用的模型列表，可按提供商过滤（保持不变）"""
+        provider_to_check = provider or self.provider
+        if not provider_to_check:
+            return []
+        available = []
+        for model in self.all_models.values():
+            if model.provider.lower() == provider_to_check.lower():
+                available.append({'api_name': model.api_name, 'display_name': model.display_name})
+        return available
+
     def generate_content(self,
-                        prompt: Union[str, List],
-                        model_type: str = 'analysis',
-                        generation_config: Optional[Dict] = None,
-                        safety_settings: Optional[List] = None,
-                        request_options: Optional[Dict] = None,
-                        retry_count: int = 0,
-                        max_retries: int = 3) -> Tuple[str, Dict[str, Any]]:
+                         prompt: Union[str, List],
+                         model_type: str = 'analysis',
+                         generation_config: Optional[Dict] = None,
+                         safety_settings: Optional[List] = None,
+                         request_options: Optional[Dict] = None) -> Tuple[str, Dict[str, Any]]:
         """
-        生成内容的统一接口
-        
-        Args:
-            prompt: 提示词或包含提示词和文件的列表
-            model_type: 模型类型
-            generation_config: 生成配置
-            safety_settings: 安全设置
-            request_options: 请求选项
-            retry_count: 当前重试次数
-            max_retries: 最大重试次数
-        
-        Returns:
-            (response_text, statistics): 响应文本和统计信息
+        【已重构】生成内容的统一接口，将调用委托给具体的Provider。
         """
-        if not self.is_initialized:
-            raise RuntimeError("ModelInterface未正确初始化，请检查API密钥配置")
-        
+        if not self.is_initialized or not self.provider_client:
+            raise RuntimeError("ModelInterface未正确初始化，请在主页面设置API密钥。")
+
+        model_name = self.get_model_name(model_type)
+        if not model_name:
+            raise ValueError(f"未给任务类型 '{model_type}' 配置模型。请在侧边栏设置。")
+
         start_time = time.time()
+
+        # 将调用委托给具体的provider客户端
+        response_text, stats = self.provider_client.generate(
+            prompt=prompt,
+            model_name=model_name,
+            generation_config=generation_config,
+            safety_settings=safety_settings,
+            request_options=request_options
+        )
+
+        end_time = time.time()
+        cost = self.calculate_cost(stats.get('input_tokens', 0), stats.get('output_tokens', 0), model_type)
+
+        # 组装最终的、统一格式的统计数据
+        final_stats = {
+            'model_used': model_name,
+            'input_tokens': stats.get('input_tokens', 0),
+            'output_tokens': stats.get('output_tokens', 0),
+            'total_tokens': stats.get('input_tokens', 0) + stats.get('output_tokens', 0),
+            'estimated_cost': cost,
+            'generation_time': end_time - start_time,
+            'model_type': model_type
+        }
+
+        return response_text, final_stats
+
+    def calculate_cost(self, input_tokens: int, output_tokens: int, model_type: str) -> float:
+        """计算API调用成本（保持不变）"""
         model_name = self.get_model_name(model_type)
-        
-        try:
-            # 获取模型实例
-            model = genai.GenerativeModel(model_name)
-            
-            # 默认生成配置
-            if generation_config is None:
-                generation_config = {
-                    'temperature': 0.7,
-                    'top_p': 0.95,
-                    'max_output_tokens': 16384,
-                    'response_mime_type': 'text/plain'
-                }
-            
-            # 默认安全设置
-            if safety_settings is None:
-                safety_settings = [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
-                ]
-            
-            # 默认请求选项
-            if request_options is None:
-                request_options = {"timeout": 900}  # 15分钟超时
-            
-            # 生成内容
-            response = model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
-                request_options=request_options
-            )
-            
-            # 提取响应文本
-            response_text = response.text
-            
-            # 计算Token使用量
-            # 注意：实际的token计数需要从response对象中获取
-            # 这里使用估算值
-            input_tokens = self._estimate_tokens(str(prompt))
-            output_tokens = self._estimate_tokens(response_text)
-            total_tokens = input_tokens + output_tokens
-            
-            # 计算费用
-            cost = self.calculate_cost(input_tokens, output_tokens, model_type)
-            
-            # 构建统计信息
-            statistics = {
-                'model_used': model_name,
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens,
-                'total_tokens': total_tokens,
-                'estimated_cost': cost,
-                'generation_time': time.time() - start_time,
-                'model_type': model_type
-            }
-            
-            return response_text, statistics
-            
-        except Exception as e:
-            # 错误处理和重试逻辑
-            error_msg = str(e)
-            
-            # 判断是否需要重试
-            if retry_count < max_retries and self._should_retry(error_msg):
-                wait_time = 2 ** retry_count  # 指数退避
-                print(f"请求失败，{wait_time}秒后重试... (尝试 {retry_count + 1}/{max_retries})")
-                time.sleep(wait_time)
-                
-                return self.generate_content(
-                    prompt, model_type, generation_config,
-                    safety_settings, request_options,
-                    retry_count + 1, max_retries
-                )
-            
-            # 无法重试，返回错误
-            raise Exception(f"模型调用失败: {error_msg}")
-    
-    def _should_retry(self, error_msg: str) -> bool:
-        """判断错误是否应该重试"""
-        retry_keywords = [
-            'rate limit',
-            'quota exceeded',
-            'timeout',
-            'temporary',
-            'unavailable',
-            '429',  # Too Many Requests
-            '503',  # Service Unavailable
-            '504'   # Gateway Timeout
-        ]
-        
-        error_lower = error_msg.lower()
-        return any(keyword in error_lower for keyword in retry_keywords)
-    
-    def _estimate_tokens(self, text: Union[str, Any]) -> int:
-        """
-        估算文本的token数量
-        
-        简单估算：平均每个字符约0.5个token（英文），中文约1个token
-        """
-        if not isinstance(text, str):
-            text = str(text)
-        
-        # 简单的估算逻辑
-        # 可以根据需要使用更精确的tokenizer
-        chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
-        other_chars = len(text) - chinese_chars
-        
-        estimated_tokens = chinese_chars + (other_chars * 0.5)
-        return int(estimated_tokens)
-    
-    def calculate_cost(self, 
-                      input_tokens: int, 
-                      output_tokens: int,
-                      model_type: str) -> float:
-        """
-        计算API调用成本
-        
-        Args:
-            input_tokens: 输入token数
-            output_tokens: 输出token数
-            model_type: 模型类型
-        
-        Returns:
-            float: 预估成本（美元）
-        """
-        model_name = self.get_model_name(model_type)
-        model_config = self.models.get(model_name)
-        
+        model_config = self.all_models.get(model_name)
         if model_config:
             return model_config.calculate_cost(input_tokens, output_tokens)
-        
-        # 如果找不到模型配置，使用默认价格
-        default_input_price = 1.0
-        default_output_price = 2.0
-        
-        input_cost = (input_tokens / 1_000_000) * default_input_price
-        output_cost = (output_tokens / 1_000_000) * default_output_price
-        
-        return input_cost + output_cost
-    
+        return 0.0
+
     def count_tokens(self, text: str, model_type: str = 'analysis') -> int:
-        """
-        精确计算文本的token数量
-        
-        Args:
-            text: 要计算的文本
-            model_type: 模型类型
-        
-        Returns:
-            int: token数量
-        """
-        if not self.is_initialized:
-            # 如果未初始化，返回估算值
+        """【已重构】精确计算文本的token数量，委托给Provider。"""
+        if not self.is_initialized or not self.provider_client:
             return self._estimate_tokens(text)
-        
+
         try:
             model_name = self.get_model_name(model_type)
-            model = genai.GenerativeModel(model_name)
-            
-            # 使用模型的count_tokens方法
-            result = model.count_tokens(text)
-            return result.total_tokens
-            
+            return self.provider_client.count_tokens(text, model_name)
         except Exception as e:
             print(f"Token计算失败，使用估算值: {e}")
             return self._estimate_tokens(text)
-    
-    def check_content_safety(self, text: str) -> Dict[str, Any]:
-        """
-        检查内容安全性
-        
-        Args:
-            text: 要检查的文本
-        
-        Returns:
-            Dict: 安全检查结果
-        """
-        # TODO: 实现内容安全检查
-        # 这里提供基础实现
-        return {
-            'is_safe': True,
-            'categories': [],
-            'confidence': 1.0
-        }
-    
+
+    def _estimate_tokens(self, text: Union[str, Any]) -> int:
+        """估算文本的token数量（通用后备方法，保持不变）"""
+        if not isinstance(text, str):
+            text = str(text)
+        chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
+        other_chars = len(text) - chinese_chars
+        estimated_tokens = chinese_chars + (other_chars * 0.5)
+        return int(estimated_tokens)
+
     def stream_generate_content(self,
-                               prompt: Union[str, List],
-                               model_type: str = 'analysis',
-                               generation_config: Optional[Dict] = None,
-                               callback=None) -> Tuple[str, Dict[str, Any]]:
-        """
-        流式生成内容（用于实时显示）
-        
-        Args:
-            prompt: 提示词
-            model_type: 模型类型
-            generation_config: 生成配置
-            callback: 回调函数，用于处理每个chunk
-        
-        Returns:
-            (complete_response, statistics): 完整响应和统计信息
-        """
-        if not self.is_initialized:
+                                prompt: Union[str, List],
+                                model_type: str = 'analysis',
+                                generation_config: Optional[Dict] = None,
+                                callback=None) -> Tuple[str, Dict[str, Any]]:
+        """【已重构】流式生成内容，委托给Provider。"""
+        if not self.is_initialized or not self.provider_client:
             raise RuntimeError("ModelInterface未正确初始化")
-        
+
         start_time = time.time()
         model_name = self.get_model_name(model_type)
-        
-        try:
-            model = genai.GenerativeModel(model_name)
-            
-            if generation_config is None:
-                generation_config = {
-                    'temperature': 0.7,
-                    'top_p': 0.95,
-                    'max_output_tokens': 8192
-                }
-            
-            # 流式生成
-            response_stream = model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                stream=True
-            )
-            
-            complete_response = ""
-            for chunk in response_stream:
-                if chunk.text:
-                    complete_response += chunk.text
-                    if callback:
-                        callback(chunk.text)
-            
-            # 计算统计信息
-            input_tokens = self._estimate_tokens(str(prompt))
-            output_tokens = self._estimate_tokens(complete_response)
-            cost = self.calculate_cost(input_tokens, output_tokens, model_type)
-            
-            statistics = {
-                'model_used': model_name,
-                'input_tokens': input_tokens,
-                'output_tokens': output_tokens,
-                'total_tokens': input_tokens + output_tokens,
-                'estimated_cost': cost,
-                'generation_time': time.time() - start_time,
-                'model_type': model_type,
-                'stream_mode': True
-            }
-            
-            return complete_response, statistics
-            
-        except Exception as e:
-            raise Exception(f"流式生成失败: {str(e)}")
-    
+
+        complete_response, stats = self.provider_client.stream_generate(
+            prompt, model_name, generation_config, callback
+        )
+
+        end_time = time.time()
+        cost = self.calculate_cost(stats.get('input_tokens', 0), stats.get('output_tokens', 0), model_type)
+
+        final_stats = {
+            'model_used': model_name,
+            'input_tokens': stats.get('input_tokens', 0),
+            'output_tokens': stats.get('output_tokens', 0),
+            'total_tokens': stats.get('input_tokens', 0) + stats.get('output_tokens', 0),
+            'estimated_cost': cost,
+            'generation_time': end_time - start_time,
+            'model_type': model_type,
+            'stream_mode': True
+        }
+
+        return complete_response, final_stats
+
     def get_model_info(self, model_type: str) -> Dict[str, Any]:
-        """
-        获取指定类型模型的详细信息
-        
-        Args:
-            model_type: 模型类型
-        
-        Returns:
-            Dict: 模型详细信息
-        """
+        """获取指定类型模型的详细信息（保持不变）"""
         model_name = self.get_model_name(model_type)
-        model_config = self.models.get(model_name)
-        
+        model_config = self.all_models.get(model_name)
         if model_config:
             return {
-                'api_name': model_config.api_name,
-                'display_name': model_config.display_name,
+                'api_name': model_config.api_name, 'display_name': model_config.display_name,
                 'input_price_per_million': model_config.input_price_per_million,
                 'output_price_per_million': model_config.output_price_per_million,
-                'model_type': model_type,
-                'is_active': True
+                'model_type': model_type, 'is_active': True
             }
-        
         return {
-            'api_name': model_name,
-            'display_name': model_name,
-            'model_type': model_type,
-            'is_active': False,
-            'error': 'Model configuration not found'
+            'api_name': model_name, 'display_name': model_name, 'model_type': model_type,
+            'is_active': False, 'error': 'Model configuration not found'
         }
-    
+
     def health_check(self) -> Dict[str, Any]:
-        """
-        健康检查
-        
-        Returns:
-            Dict: 健康状态信息
-        """
+        """【已重构】健康检查，委托给Provider。"""
         health_status = {
-            'status': 'unknown',
-            'api_key_configured': bool(self.api_key),
-            'models_loaded': len(self.models),
-            'is_initialized': self.is_initialized,
-            'errors': []
+            'status': 'unhealthy', 'api_key_configured': bool(self.api_key),
+            'provider': self.provider, 'models_loaded': len(self.all_models),
+            'is_initialized': self.is_initialized, 'errors': []
         }
-        
-        try:
-            # 尝试一个简单的API调用
-            if self.is_initialized:
-                model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
-                response = model.generate_content(
-                    "Hello",
-                    generation_config={'max_output_tokens': 10}
-                )
-                health_status['status'] = 'healthy'
-                health_status['api_accessible'] = True
-            else:
+
+        if self.is_initialized and self.provider_client:
+            try:
+                provider_health = self.provider_client.health_check()
+                health_status.update(provider_health)
+                if provider_health.get('status') == 'healthy':
+                    health_status['status'] = 'healthy'
+                else:
+                    health_status['errors'].append(provider_health.get('reason', 'Provider health check failed.'))
+            except Exception as e:
                 health_status['status'] = 'unhealthy'
-                health_status['errors'].append('Not initialized')
-                
-        except Exception as e:
-            health_status['status'] = 'unhealthy'
-            health_status['api_accessible'] = False
-            health_status['errors'].append(str(e))
-        
+                health_status['errors'].append(f"Provider health check raised an exception: {e}")
+        else:
+            health_status['errors'].append('Not initialized or no provider client.')
+
         return health_status

@@ -5,8 +5,8 @@
 功能说明: 一键生成页面，实现从输入到方案的端到端处理
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.1.0
 """
 
 import os
@@ -46,6 +46,7 @@ from utils.format_utils import (
     format_table_text
 )
 from utils.validation_utils import validate_batch_files
+from utils.ui_utils import check_api_key_setup # 引入检查函数
 
 # 页面配置
 st.set_page_config(

@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-文件路径: smart_proposal_engine/pages/2_??_Deep_Analysis.py
+文件路径: smart_proposal_engine/pages/2_🔍_Deep_Analysis.py
 功能说明: 深度分析页面，对转录文本进行商业洞察分析
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.1.0
 """
 
 import os
@@ -36,11 +36,12 @@ from utils.format_utils import (
     markdown_to_text
 )
 from utils.validation_utils import validate_text_input
+from utils.ui_utils import check_api_key_setup  # 引入检查函数
 
 # 页面配置
 st.set_page_config(
     page_title="深度分析 - SmartProposal Engine",
-    page_icon="??",
+    page_icon="🔍",
     layout="wide"
 )
 
@@ -85,7 +86,7 @@ def load_previous_result():
 
 def show_data_source_section():
     """显示数据源选择部分"""
-    st.markdown("### ?? 选择数据源")
+    st.markdown("### 📊 选择数据源")
 
     # 检查是否有上一步的结果
     previous_result = load_previous_result()
@@ -102,7 +103,7 @@ def show_data_source_section():
 
     if use_previous and previous_result:
         with col2:
-            st.success(f"? 已加载上一步结果")
+            st.success(f"✅ 已加载上一步结果")
             st.caption(f"内容长度: {len(previous_result.content):,} 字符")
 
         # 显示内容预览
@@ -118,7 +119,7 @@ def show_data_source_section():
 
     else:
         # 文件上传或文本输入
-        tab1, tab2 = st.tabs(["?? 上传文件", "?? 文本输入"])
+        tab1, tab2 = st.tabs(["📤 上传文件", "✍️ 文本输入"])
 
         with tab1:
             uploaded_file = st.file_uploader(
@@ -191,7 +192,7 @@ def show_data_source_section():
 
 def show_analysis_configuration():
     """显示分析配置部分"""
-    st.markdown("### ?? 分析配置")
+    st.markdown("### ⚙️ 分析配置")
 
     # 初始化分析服务以获取可用模板
     analysis_service = DeepAnalysisService()
@@ -248,7 +249,7 @@ def show_analysis_configuration():
         )
 
     # 自定义Prompt部分
-    with st.expander("?? 自定义分析模板（高级）", expanded=False):
+    with st.expander("🛠️ 自定义分析模板（高级）", expanded=False):
         st.markdown("""
         您可以提供自定义的分析模板来替代预设模板。模板中可使用以下变量：
         - `{transcript}`: 待分析的文本内容
@@ -342,7 +343,7 @@ def perform_analysis(content: str, metadata: dict, options: dict):
             st.session_state.deep_analysis['current_progress'] = 100
 
             if result.is_success:
-                status_text.text("? 分析完成！")
+                status_text.text("✅ 分析完成！")
 
                 # 保存结果到会话
                 session_manager.save_result('analysis', result)
@@ -377,11 +378,11 @@ def perform_analysis(content: str, metadata: dict, options: dict):
                 st.rerun()
 
             else:
-                status_text.text("? 分析失败")
+                status_text.text("❌ 分析失败")
                 st.error(f"分析失败: {result.error}")
 
         except Exception as e:
-            status_text.text("? 发生错误")
+            status_text.text("❌ 发生错误")
             st.error(f"分析过程中发生错误: {str(e)}")
 
         finally:
@@ -400,11 +401,11 @@ def show_analysis_result():
         return
 
     st.markdown("---")
-    st.markdown("### ?? 分析结果")
+    st.markdown("### 📊 分析结果")
 
     # 显示执行摘要
     if 'executive_summary' in result.metadata:
-        st.markdown("#### ?? 执行摘要")
+        st.markdown("#### 📄 执行摘要")
         st.info(result.metadata['executive_summary'])
 
     # 显示关键指标
@@ -424,14 +425,14 @@ def show_analysis_result():
         st.metric("分析模板", result.metadata.get('analysis_scenario', '未知'))
 
     # 显示完整分析报告
-    st.markdown("#### ?? 完整分析报告")
+    st.markdown("#### 📑 完整分析报告")
 
     # 报告显示选项
     col1, col2 = st.columns([3, 1])
     with col1:
         show_full_report = st.checkbox("显示完整报告", value=True)
     with col2:
-        if st.button("?? 复制到剪贴板"):
+        if st.button("📋 复制到剪贴板"):
             st.write(result.content)  # Streamlit会自动添加复制功能
             st.success("已复制到剪贴板！")
 
@@ -454,7 +455,7 @@ def show_analysis_result():
 
     # 显示行动项（如果有）
     if 'action_items' in result.metadata and result.metadata['action_items']:
-        st.markdown("#### ? 提取的行动项")
+        st.markdown("#### 🎯 提取的行动项")
 
         action_items = result.metadata['action_items']
         for i, item in enumerate(action_items, 1):
@@ -465,7 +466,7 @@ def show_analysis_result():
                 st.caption(f"优先级: {item.get('priority', '中')}")
 
     # 操作按钮
-    st.markdown("#### ?? 保存和下一步")
+    st.markdown("#### ⏯️ 保存和下一步")
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -475,7 +476,7 @@ def show_analysis_result():
         filename_md = f"analysis_report_{timestamp}.md"
 
         st.download_button(
-            label="?? 下载报告(MD)",
+            label="💾 下载报告(MD)",
             data=result.content,
             file_name=filename_md,
             mime="text/markdown",
@@ -499,7 +500,7 @@ def show_analysis_result():
         json_str = json.dumps(export_data, ensure_ascii=False, indent=2)
 
         st.download_button(
-            label="?? 下载报告(JSON)",
+            label="💾 下载报告(JSON)",
             data=json_str,
             file_name=filename_json,
             mime="application/json",
@@ -508,7 +509,7 @@ def show_analysis_result():
 
     with col3:
         # 发送到方案生成
-        if st.button("?? 发送到方案生成", type="primary", use_container_width=True):
+        if st.button("➡️ 发送到方案生成", type="primary", use_container_width=True):
             session_manager = st.session_state.session_manager
             session_manager.save_result('analysis', result)
             st.success("已保存！请前往 **方案生成** 页面继续")
@@ -517,7 +518,7 @@ def show_analysis_result():
 
     with col4:
         # 重新分析
-        if st.button("?? 重新分析", use_container_width=True):
+        if st.button("🔄 重新分析", use_container_width=True):
             st.session_state.deep_analysis['analysis_result'] = None
             st.rerun()
 
@@ -530,7 +531,7 @@ def show_analysis_history():
         return
 
     st.markdown("---")
-    st.markdown("### ?? 分析历史")
+    st.markdown("### 📜 分析历史")
 
     # 按时间倒序显示最近的分析
     for item in reversed(history[-5:]):  # 只显示最近5条
@@ -552,11 +553,14 @@ def show_analysis_history():
 
 def main():
     """主函数"""
+    # 在页面顶部检查API Key设置
+    check_api_key_setup()
+
     # 初始化页面状态
     initialize_page_state()
 
     # 页面标题
-    st.title("?? 深度分析")
+    st.title("🔍 深度分析")
     st.markdown("对转录文本进行商业洞察分析，提取关键信息和行动建议")
 
     # 显示分析结果（如果有）
@@ -579,7 +583,7 @@ def main():
             col1, col2, col3 = st.columns([2, 1, 2])
             with col2:
                 if st.button(
-                        "?? 开始分析",
+                        "▶️ 开始分析",
                         type="primary",
                         use_container_width=True,
                         disabled=st.session_state.deep_analysis.get('processing', False)
@@ -593,7 +597,7 @@ def main():
 
     # 侧边栏信息
     with st.sidebar:
-        st.markdown("### ?? 使用提示")
+        st.markdown("### 💡 使用提示")
         st.info("""
 **分析场景选择**：
 - 客户访谈：适合需求挖掘
@@ -610,7 +614,7 @@ def main():
 """)
 
         # 模板帮助
-        if st.button("?? 查看模板示例"):
+        if st.button("📖 查看模板示例"):
             st.markdown("""
 **自定义模板示例**：
 ```

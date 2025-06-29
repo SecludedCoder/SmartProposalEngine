@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-文件路径: smart_proposal_engine/pages/3_🎯_Proposal_Generation.py
+文件路径: smart_proposal_engine/pages/3_📋_Proposal_Generation.py
 功能说明: 方案生成页面，基于分析结果生成各类商业文档
 作者: SmartProposal Team
 创建日期: 2025-06-27
-最后修改: 2025-06-27
-版本: 1.0.0
+最后修改: 2025-06-29
+版本: 1.1.0
 """
 
 import os
@@ -38,11 +38,12 @@ from utils.format_utils import (
     markdown_to_text
 )
 from utils.validation_utils import validate_text_input, validate_file_type
+from utils.ui_utils import check_api_key_setup # 引入检查函数
 
 # 页面配置
 st.set_page_config(
     page_title="方案生成 - SmartProposal Engine",
-    page_icon="🎯",
+    page_icon="📋",
     layout="wide"
 )
 
@@ -742,11 +743,14 @@ def show_generation_history():
 
 def main():
     """主函数"""
+    # 在页面顶部检查API Key设置
+    check_api_key_setup()
+
     # 初始化页面状态
     initialize_page_state()
 
     # 页面标题
-    st.title("🎯 方案生成")
+    st.title("📋 方案生成")
     st.markdown("基于分析结果生成专业的商业方案和项目建议书")
 
     # 显示生成结果（如果有）
